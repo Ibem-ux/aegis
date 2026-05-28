@@ -1,7 +1,15 @@
+import 'dart:io' show Platform;
+
 class ApiEndpoints {
-  // Can be configured to point to local IP or tailscale IP
-  static const String baseUrl = 'http://10.0.2.2:3000/api'; // Android Emulator loopback
-  static const String wsUrl = 'http://10.0.2.2:3000/chat';
+  /// Resolves the correct backend host for each platform:
+  /// - Android Emulator uses 10.0.2.2 (special loopback alias)
+  /// - All other platforms (Windows, iOS, macOS, Linux) use localhost
+  static String get host {
+    return Platform.isAndroid ? '10.0.2.2:3000' : 'localhost:3000';
+  }
+
+  static String get baseUrl => 'http://$host/api';
+  static String get wsUrl => 'http://$host/chat';
 
   // Auth Endpoints
   static const String register = '/auth/register';

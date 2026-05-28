@@ -33,8 +33,7 @@ class _TotpSetupPageState extends ConsumerState<TotpSetupPage> {
   Future<void> _fetchQrDetails() async {
     setState(() => _isLoading = true);
     try {
-      final repository = ref.read(authRepositoryProvider);
-      final response = await ref.read(apiClientProvider).dio.post('/auth/2fa/setup');
+      final response = await ref.read(apiClientProvider).dio.post<Map<String, dynamic>>('/auth/2fa/setup');
       
       final data = response.data as Map<String, dynamic>;
       setState(() {

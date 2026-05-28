@@ -55,7 +55,7 @@ class _ChatRoomPageState extends ConsumerState<ChatRoomPage> {
     ref.read(socketClientProvider).typingStream.listen((data) {
       if (data['chat_id'] == widget.chatId && mounted) {
         setState(() {
-          _isRecipientTyping = data['is_typing'] ?? false;
+          _isRecipientTyping = (data['is_typing'] as bool?) ?? false;
         });
       }
     });

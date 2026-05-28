@@ -24,9 +24,9 @@ class AuthRepository {
     if (pubKey == null) {
       final x25519 = X25519();
       final keyPair = await x25519.newKeyPair();
-      final simpleKeyPair = await keyPair.toSimpleKeyPair();
-      final privateKeyBytes = simpleKeyPair.privateKey;
-      final publicKeyBytes = simpleKeyPair.publicKey.bytes;
+      final privateKeyBytes = await keyPair.extractPrivateKeyBytes();
+      final publicKey = await keyPair.extractPublicKey();
+      final publicKeyBytes = publicKey.bytes;
       
       pubKey = base64.encode(publicKeyBytes);
       await _secureStorage.saveDeviceKeyPair(
@@ -39,7 +39,7 @@ class AuthRepository {
     final name = DeviceInfo.getDeviceName();
     final platform = DeviceInfo.getPlatform();
 
-    final response = await _apiClient.dio.post(
+    final response = await _apiClient.dio.post<Map<String, dynamic>>(
       ApiEndpoints.register,
       data: {
         'username': username,
@@ -82,9 +82,9 @@ class AuthRepository {
     if (pubKey == null) {
       final x25519 = X25519();
       final keyPair = await x25519.newKeyPair();
-      final simpleKeyPair = await keyPair.toSimpleKeyPair();
-      final privateKeyBytes = simpleKeyPair.privateKey;
-      final publicKeyBytes = simpleKeyPair.publicKey.bytes;
+      final privateKeyBytes = await keyPair.extractPrivateKeyBytes();
+      final publicKey = await keyPair.extractPublicKey();
+      final publicKeyBytes = publicKey.bytes;
       
       pubKey = base64.encode(publicKeyBytes);
       await _secureStorage.saveDeviceKeyPair(
@@ -98,7 +98,7 @@ class AuthRepository {
     final platform = DeviceInfo.getPlatform();
 
     try {
-      final response = await _apiClient.dio.post(
+      final response = await _apiClient.dio.post<Map<String, dynamic>>(
         ApiEndpoints.login,
         data: {
           'username': username,
@@ -157,7 +157,7 @@ class AuthRepository {
       headers['Authorization'] = 'Bearer $tempToken';
     }
 
-    final response = await _apiClient.dio.post(
+    final response = await _apiClient.dio.post<Map<String, dynamic>>(
       ApiEndpoints.verify2FA,
       data: {'code': code},
       options: Options(headers: headers),

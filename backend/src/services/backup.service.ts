@@ -1,5 +1,4 @@
 import { Pool } from 'pg';
-import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
@@ -20,18 +19,14 @@ export class BackupService {
   }
 
   /**
-   * Performs an encrypted PostgreSQL database backup using pg_dump.
+   * Performs an encrypted SQLite database backup using VACUUM INTO.
    */
   public static async runDatabaseBackup(db: Pool, creatorId?: string): Promise<string> {
     this.init();
     
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const tempFile = path.join(this.backupDir, `db-temp-${timestamp}.sql`);
+    const tempFile = path.join(this.backupDir, `db-temp-${timestamp}.sqlite`);
     const encryptedFile = path.join(this.backupDir, `db-backup-${timestamp}.enc`);
-
-    // Parse DB URL to get credentials for pg_dump
-    // postgresql://user:pass@host:port/db
-    const connectionUrl = config.database.url;
 
     // Insert initial record in backups table
     const backupRecord = await db.query(
@@ -44,68 +39,64 @@ export class BackupService {
 
     logger.info(`Starting database backup task ${backupId}`);
 
-    return new Promise((resolve, reject) => {
-      // Execute pg_dump
-      exec(`pg_dump "${connectionUrl}" > "${tempFile}"`, async (error, stdout, stderr) => {
-        if (error) {
-          logger.error(`Database backup failed during pg_dump: ${stderr}`, error);
-          await db.query('UPDATE backups SET status = \'FAILED\', completed_at = CURRENT_TIMESTAMP WHERE id = $1', [backupId]);
-          if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-          return reject(error);
-        }
+    try {
+      // Execute vacuum to dump database atomically
+      // Escape tempFile path for SQLite single quotes
+      const escapedTempFile = tempFile.replace(/'/g, "''");
+      await db.query(`VACUUM INTO '${escapedTempFile}'`);
 
-        try {
-          // Read the plaintext file
-          const plaintext = fs.readFileSync(tempFile);
+      // Read the vacuumed SQLite database file
+      const plaintext = fs.readFileSync(tempFile);
 
-          // Encrypt file content using AES-256-GCM
-          const iv = crypto.randomBytes(12);
-          const cipher = crypto.createCipheriv('aes-256-gcm', this.backupKey, iv);
-          
-          const ciphertext = Buffer.concat([
-            cipher.update(plaintext),
-            cipher.final()
-          ]);
-          const tag = cipher.getAuthTag();
+      // Encrypt file content using AES-256-GCM
+      const iv = crypto.randomBytes(12);
+      const cipher = crypto.createCipheriv('aes-256-gcm', this.backupKey, iv);
+      
+      const ciphertext = Buffer.concat([
+        cipher.update(plaintext),
+        cipher.final()
+      ]);
+      const tag = cipher.getAuthTag();
 
-          // Write encrypted archive: [12-byte IV][16-byte TAG][Encrypted Data]
-          const finalBuffer = Buffer.concat([iv, tag, ciphertext]);
-          fs.writeFileSync(encryptedFile, finalBuffer);
+      // Write encrypted archive: [12-byte IV][16-byte TAG][Encrypted Data]
+      const finalBuffer = Buffer.concat([iv, tag, ciphertext]);
+      fs.writeFileSync(encryptedFile, finalBuffer);
 
-          // Compute SHA-256 Checksum
-          const checksum = crypto.createHash('sha256').update(finalBuffer).digest('hex');
-          const fileSize = finalBuffer.length;
+      // Compute SHA-256 Checksum
+      const checksum = crypto.createHash('sha256').update(finalBuffer).digest('hex');
+      const fileSize = finalBuffer.length;
 
-          // Cleanup temp file
-          fs.unlinkSync(tempFile);
+      // Cleanup temp file
+      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
 
-          // Update backup record
-          await db.query(
-            `UPDATE backups 
-             SET status = 'COMPLETED', 
-                 file_size = $1, 
-                 checksum = $2, 
-                 completed_at = CURRENT_TIMESTAMP,
-                 created_by = $3
-             WHERE id = $4`,
-            [fileSize, checksum, creatorId || null, backupId]
-          );
+      // Update backup record
+      await db.query(
+        `UPDATE backups 
+         SET status = 'COMPLETED', 
+             file_size = $1, 
+             checksum = $2, 
+             completed_at = CURRENT_TIMESTAMP,
+             created_by = $3
+         WHERE id = $4`,
+        [fileSize, checksum, creatorId || null, backupId]
+      );
 
-          logger.info(`Database backup ${backupId} completed successfully`);
-          resolve(encryptedFile);
-        } catch (err: any) {
-          logger.error(`Database backup encryption failed: ${err.message}`, err);
-          await db.query('UPDATE backups SET status = \'FAILED\', completed_at = CURRENT_TIMESTAMP WHERE id = $1', [backupId]);
-          if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-          if (fs.existsSync(encryptedFile)) fs.unlinkSync(encryptedFile);
-          reject(err);
-        }
-      });
-    });
+      logger.info(`Database backup ${backupId} completed successfully`);
+      return encryptedFile;
+    } catch (err: any) {
+      logger.error(`Database backup failed: ${err.message}`, err);
+      
+      await db.query('UPDATE backups SET status = \'FAILED\', completed_at = CURRENT_TIMESTAMP WHERE id = $1', [backupId]);
+      
+      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+      if (fs.existsSync(encryptedFile)) fs.unlinkSync(encryptedFile);
+      
+      throw err;
+    }
   }
 
   /**
-   * Decrypts an encrypted backup archive back to plaintext SQL.
+   * Decrypts an encrypted backup archive back to plaintext SQLite file.
    */
   public static decryptBackup(encryptedFilePath: string, outputFilePath: string) {
     const fileBuffer = fs.readFileSync(encryptedFilePath);

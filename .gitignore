@@ -30,7 +30,12 @@ frontend/pubspec.lock
 pgdata/
 redisdata/
 miniodata/
+backend/data/
+backend/uploads/
 
 # Keys (never commit)
 *.pem
 *.key
+
+# Local Utilities
+jdk/

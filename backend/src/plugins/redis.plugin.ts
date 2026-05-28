@@ -1,34 +1,43 @@
 import fp from 'fastify-plugin';
 import { FastifyInstance } from 'fastify';
-import { createClient, RedisClientType } from 'redis';
-import { redisConfig } from '../config/redis';
 import { logger } from '../utils/logger';
 
 declare module 'fastify' {
   interface FastifyInstance {
-    redis: RedisClientType;
+    redis: {
+      sAdd(key: string, value: string): Promise<number>;
+      sRem(key: string, value: string): Promise<number>;
+      sMembers(key: string): Promise<string[]>;
+    };
   }
 }
 
 export default fp(async (fastify: FastifyInstance) => {
-  const client = createClient(redisConfig);
+  logger.info('Initializing In-Memory Redis Mock Client');
 
-  client.on('error', (err) => logger.error('Redis Client Error', err));
-  client.on('connect', () => logger.info('Redis Client Connecting'));
-  client.on('ready', () => logger.info('Redis Client Connected and Ready'));
+  const sets = new Map<string, Set<string>>();
 
-  try {
-    await client.connect();
-  } catch (error) {
-    logger.error('Failed to connect to Redis', error);
-    throw error;
-  }
+  const client = {
+    sAdd: async (key: string, value: string): Promise<number> => {
+      if (!sets.has(key)) {
+        sets.set(key, new Set<string>());
+      }
+      const set = sets.get(key)!;
+      const sizeBefore = set.size;
+      set.add(value);
+      return set.size - sizeBefore;
+    },
+    sRem: async (key: string, value: string): Promise<number> => {
+      const set = sets.get(key);
+      if (!set) return 0;
+      const success = set.delete(value);
+      return success ? 1 : 0;
+    },
+    sMembers: async (key: string): Promise<string[]> => {
+      const set = sets.get(key);
+      return set ? Array.from(set) : [];
+    }
+  };
 
-  // Gracefully close redis on shutdown
-  fastify.addHook('onClose', async () => {
-    logger.info('Closing Redis client connection');
-    await client.quit();
-  });
-
-  fastify.decorate('redis', client as any);
+  fastify.decorate('redis', client);
 });

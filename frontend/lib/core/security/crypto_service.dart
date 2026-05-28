@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
 
 class CryptoService {
-  static final _cipher = AesGcm.with256Bits();
+  static final _cipher = AesGcm.with256bits();
 
   /// Encrypts raw file bytes using AES-256-GCM.
   /// Returns a map containing:
@@ -185,10 +185,10 @@ class CryptoService {
     required String myDeviceId,
     required String senderPublicKeyBase64,
   }) async {
-    final Map<String, dynamic> payload = json.decode(payloadJson);
-    final bodyCombined = base64.decode(payload['ciphertext'] as String);
-    final bodyIv = base64.decode(payload['iv'] as String);
-    final keysMap = payload['keys'] as Map<String, dynamic>;
+    final payloadMap = json.decode(payloadJson) as Map<String, dynamic>;
+    final bodyCombined = base64.decode(payloadMap['ciphertext'] as String);
+    final bodyIv = base64.decode(payloadMap['iv'] as String);
+    final keysMap = payloadMap['keys'] as Map<String, dynamic>;
     
     final myDeviceEntry = keysMap[myDeviceId] as Map<String, dynamic>?;
     if (myDeviceEntry == null) {

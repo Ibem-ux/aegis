@@ -1,31 +1,30 @@
 import fp from 'fastify-plugin';
 import { FastifyInstance } from 'fastify';
-import { Client } from 'minio';
-import { minioConfig } from '../config/minio';
+import fs from 'fs';
+import path from 'path';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
 declare module 'fastify' {
   interface FastifyInstance {
-    minio: Client;
+    minio: any;
   }
 }
 
 export default fp(async (fastify: FastifyInstance) => {
-  const client = new Client(minioConfig);
+  const uploadPath = path.resolve(config.uploads.dir);
 
-  // Check if bucket exists, create if not
-  try {
-    const bucketExists = await client.bucketExists(config.minio.bucketName);
-    if (!bucketExists) {
-      await client.makeBucket(config.minio.bucketName, 'us-east-1');
-      logger.info(`MinIO bucket "${config.minio.bucketName}" created successfully`);
-    } else {
-      logger.info(`MinIO bucket "${config.minio.bucketName}" already exists`);
-    }
-  } catch (error) {
-    logger.warn('Failed to verify or create MinIO bucket. Make sure MinIO service is running.', error);
+  // Ensure uploads directory exists
+  if (!fs.existsSync(uploadPath)) {
+    logger.info(`Creating media upload directory at: ${uploadPath}`);
+    fs.mkdirSync(uploadPath, { recursive: true });
+  } else {
+    logger.info(`Media upload directory exists at: ${uploadPath}`);
   }
 
-  fastify.decorate('minio', client);
+  // Decorate fastify with dummy object to avoid runtime errors on undefined references
+  fastify.decorate('minio', {
+    presignedPutObject: async () => '',
+    presignedGetObject: async () => ''
+  });
 });

@@ -49,7 +49,7 @@ class ApiClient {
               }
 
               // Execute token refresh
-              final response = await dio.post(
+              final response = await dio.post<Map<String, dynamic>>(
                 ApiEndpoints.refresh,
                 data: {'refresh_token': refreshToken},
               );
@@ -66,7 +66,7 @@ class ApiClient {
 
               // Retry original request
               requestOptions.headers['Authorization'] = 'Bearer $newAccessToken';
-              final retryResponse = await dio.fetch(requestOptions);
+              final retryResponse = await dio.fetch<dynamic>(requestOptions);
               
               // Flush queued requests
               for (final callback in _refreshQueue) {

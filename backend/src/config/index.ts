@@ -10,20 +10,11 @@ export const config = {
   host: process.env.HOST || '0.0.0.0',
 
   database: {
-    url: process.env.DATABASE_URL || 'postgresql://ibemuser:ibempass@localhost:5432/ibemdb',
+    path: process.env.DATABASE_PATH || 'data/database.sqlite',
   },
 
-  redis: {
-    url: process.env.REDIS_URL || 'redis://localhost:6379',
-  },
-
-  minio: {
-    endpoint: process.env.MINIO_ENDPOINT || 'localhost',
-    port: parseInt(process.env.MINIO_PORT || '9000', 10),
-    useSSL: process.env.MINIO_USE_SSL === 'true',
-    accessKey: process.env.MINIO_ACCESS_KEY || 'minioadmin',
-    secretKey: process.env.MINIO_SECRET_KEY || 'minioadmin',
-    bucketName: process.env.MINIO_BUCKET_NAME || 'ibemcom-media',
+  uploads: {
+    dir: process.env.UPLOAD_DIR || 'uploads',
   },
 
   security: {

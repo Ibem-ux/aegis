@@ -1,16 +1,14 @@
 import { Pool } from 'pg';
-import { Client } from 'minio';
 import { v4 as uuidv4 } from 'uuid';
 import { Media } from '../../types';
-import { config } from '../../config';
 import { NotFoundError } from '../../utils/errors';
 
 export class MediaService {
   /**
-   * Generates a pre-signed URL to upload files directly to MinIO.
+   * Generates a local URL to upload files directly to this backend.
    */
   public static async generateUploadUrl(
-    minio: Client,
+    host: string,
     db: Pool,
     uploaderId: string,
     payload: { filename: string; mime_type: string; file_size: number }
@@ -19,12 +17,8 @@ export class MediaService {
     const extension = payload.filename.split('.').pop();
     const storageKey = `${uploaderId}/${fileId}${extension ? `.${extension}` : ''}`;
 
-    // Generate pre-signed PUT url (expires in 15 minutes)
-    const uploadUrl = await minio.presignedPutObject(
-      config.minio.bucketName,
-      storageKey,
-      15 * 60
-    );
+    // Construct local PUT endpoint URL
+    const uploadUrl = `http://${host}/api/v1/media/upload-file/${storageKey}`;
 
     // Save media metadata in DB
     const res = await db.query<Media>(
@@ -41,15 +35,15 @@ export class MediaService {
   }
 
   /**
-   * Generates a pre-signed URL to download/stream files from MinIO.
+   * Generates a local URL served by @fastify/static.
    */
   public static async generateDownloadUrl(
-    minio: Client,
+    host: string,
     db: Pool,
     mediaId: string,
     userId: string
   ): Promise<{ downloadUrl: string; media: Media }> {
-    // 1. Fetch media details
+    // Fetch media details
     const res = await db.query<Media>('SELECT * FROM media WHERE id = $1', [mediaId]);
     const media = res.rows[0];
 
@@ -57,12 +51,8 @@ export class MediaService {
       throw new NotFoundError('Media file not found');
     }
 
-    // 2. Generate pre-signed GET URL (expires in 1 hour)
-    const downloadUrl = await minio.presignedGetObject(
-      config.minio.bucketName,
-      media.storage_key,
-      60 * 60
-    );
+    // Serve via @fastify/static mount point
+    const downloadUrl = `http://${host}/uploads/${media.storage_key}`;
 
     return {
       downloadUrl,

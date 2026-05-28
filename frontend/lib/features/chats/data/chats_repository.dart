@@ -23,8 +23,8 @@ class ChatsRepository {
 
   /// Syncs chats list from backend API to local DB
   Future<void> syncChatsWithApi() async {
-    final response = await _apiClient.dio.get(ApiEndpoints.chats);
-    final data = response.data as List<dynamic>;
+    final response = await _apiClient.dio.get<List<dynamic>>(ApiEndpoints.chats);
+    final data = response.data!;
 
     final List<Map<String, dynamic>> decryptedChats = [];
     for (final item in data) {
@@ -72,7 +72,7 @@ class ChatsRepository {
     }
 
     try {
-      final Map<String, dynamic> payload = json.decode(rawContent);
+      final payload = json.decode(rawContent) as Map<String, dynamic>;
       final senderDeviceId = payload['sender_device_id'] as String;
 
       final secureStorage = SecureStorage();
@@ -108,8 +108,8 @@ class ChatsRepository {
   /// Fetches participant public keys from server and populates cache
   Future<void> _loadChatKeys(String chatId) async {
     try {
-      final response = await _apiClient.dio.get('${ApiEndpoints.chats}/$chatId/keys');
-      final data = response.data as List<dynamic>;
+      final response = await _apiClient.dio.get<List<dynamic>>('${ApiEndpoints.chats}/$chatId/keys');
+      final data = response.data!;
 
       final Map<String, String> keysMap = {};
       for (final item in data) {
@@ -128,7 +128,7 @@ class ChatsRepository {
   /// Starts a new conversation or retrieves existing 1:1 chat
   Future<String> startChat(String recipientUsername) async {
     // 1. Search for user ID
-    final searchRes = await _apiClient.dio.get(
+    final searchRes = await _apiClient.dio.get<List<dynamic>>(
       ApiEndpoints.searchUsers,
       queryParameters: {'search': recipientUsername},
     );
@@ -140,7 +140,7 @@ class ChatsRepository {
     final recipientId = targetUser['id'] as String;
 
     // 2. Create chat room on API
-    final response = await _apiClient.dio.post(
+    final response = await _apiClient.dio.post<Map<String, dynamic>>(
       ApiEndpoints.chats,
       data: {'recipient_id': recipientId},
     );

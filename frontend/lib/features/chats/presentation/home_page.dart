@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 import 'chats_providers.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../../app/theme.dart';
-import '../../../core/database/local_database.dart';
+import '../../../core/network/api_endpoints.dart';
 import '../../../core/secure_storage/secure_storage.dart';
 
 class HomePage extends ConsumerStatefulWidget {
@@ -214,7 +214,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 title: const Text('Lock Node Session'),
                 subtitle: const Text('Logs out and clears session keys'),
                 onTap: () async {
-                  await ref.read(apiClientProvider).dio.post(ApiEndpoints.logout);
+                  await ref.read(apiClientProvider).dio.post<dynamic>(ApiEndpoints.logout);
                   await _storage.clearAll();
                   if (mounted) {
                     context.go('/login');

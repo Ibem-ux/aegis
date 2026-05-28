@@ -23,8 +23,7 @@ class AegisTheme {
     colorScheme: const ColorScheme.dark(
       primary: accentBlue,
       secondary: accentCyan,
-      surface: cardColor,
-      background: darkBackground,
+      surface: darkBackground,
       error: errorRed,
     ),
 

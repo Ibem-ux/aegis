@@ -4,3 +4,6 @@ dist/
 *.log
 keys/*.pem
 docker/data/
+data/
+uploads/
+

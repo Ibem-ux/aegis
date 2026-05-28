@@ -2,9 +2,14 @@ import { FastifyInstance } from 'fastify';
 import { MediaController } from './media.controller';
 
 export default async function mediaRoutes(fastify: FastifyInstance) {
-  // All routes are authenticated
-  fastify.addHook('preValidation', fastify.authenticate);
+  // Public PUT endpoint for actual file uploads (mimics direct upload to object storage)
+  fastify.put('/upload-file/:uploaderId/:filename', MediaController.uploadFile);
 
-  fastify.get('/upload', MediaController.getUploadUrl);
-  fastify.get('/download/:id', MediaController.getDownloadUrl);
+  // Authenticated routes for obtaining pre-signed URLs
+  fastify.register(async (authRoutes) => {
+    authRoutes.addHook('preValidation', fastify.authenticate);
+
+    authRoutes.get('/upload', MediaController.getUploadUrl);
+    authRoutes.get('/download/:id', MediaController.getDownloadUrl);
+  });
 }

@@ -1,6 +1,9 @@
 import fastify, { FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
+import path from 'path';
+import fastifyStatic from '@fastify/static';
+import { config } from './config';
 import { logger } from './utils/logger';
 import { HttpError } from './utils/errors';
 
@@ -35,6 +38,12 @@ export function buildApp(): FastifyInstance {
 
   app.register(helmet, {
     contentSecurityPolicy: false // Disabled for testing/REST tools if needed
+  });
+
+  // Serve static files from local uploads directory
+  app.register(fastifyStatic, {
+    root: path.resolve(config.uploads.dir),
+    prefix: '/uploads/'
   });
 
   // Register Custom Data-Store / Utility Plugins (ordered by dependency)

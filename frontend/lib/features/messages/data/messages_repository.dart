@@ -9,6 +9,7 @@ import '../../../core/network/socket_client.dart';
 import '../../../core/security/crypto_service.dart';
 import '../../../core/secure_storage/secure_storage.dart';
 import 'package:uuid/uuid.dart';
+import 'package:dio/dio.dart';
 
 class MessagesRepository {
   final AppDatabase _db;
@@ -96,8 +97,8 @@ class MessagesRepository {
 
   /// Syncs chat messages history from REST API
   Future<void> syncMessagesFromApi(String chatId) async {
-    final response = await _apiClient.dio.get('${ApiEndpoints.messages}/$chatId');
-    final data = response.data as List<dynamic>;
+    final response = await _apiClient.dio.get<List<dynamic>>('${ApiEndpoints.messages}/$chatId');
+    final data = response.data!;
 
     final List<Map<String, dynamic>> decryptedMsgs = [];
     for (final item in data) {
@@ -136,8 +137,8 @@ class MessagesRepository {
   /// Fetches participant public keys from server and populates cache
   Future<void> loadChatKeys(String chatId) async {
     try {
-      final response = await _apiClient.dio.get('${ApiEndpoints.chats}/$chatId/keys');
-      final data = response.data as List<dynamic>;
+      final response = await _apiClient.dio.get<List<dynamic>>('${ApiEndpoints.chats}/$chatId/keys');
+      final data = response.data!;
 
       final Map<String, String> keysMap = {};
       for (final item in data) {
@@ -165,7 +166,7 @@ class MessagesRepository {
     }
 
     try {
-      final Map<String, dynamic> payload = json.decode(rawContent);
+      final payload = json.decode(rawContent) as Map<String, dynamic>;
       final senderDeviceId = payload['sender_device_id'] as String;
 
       final myPrivateKey = await _secureStorage.getDevicePrivateKey();
@@ -228,7 +229,7 @@ class MessagesRepository {
     }
     
     final chatDevices = CryptoService.chatKeys[chatId] ?? {};
-    final recipientList = chatDevices.entries.map((e) => {
+    final recipientList = chatDevices.entries.map((e) => <String, String>{
       'device_id': e.key,
       'public_key': e.value,
     }).toList();
@@ -395,7 +396,7 @@ class MessagesRepository {
 
     // 2. Request pre-signed upload URL from backend
     final filename = file.path.split('/').last;
-    final uploadResponse = await _apiClient.dio.get(
+    final uploadResponse = await _apiClient.dio.get<Map<String, dynamic>>(
       ApiEndpoints.mediaUpload,
       queryParameters: {
         'filename': filename,
@@ -405,11 +406,11 @@ class MessagesRepository {
     );
 
     final uploadDetails = uploadResponse.data as Map<String, dynamic>;
-    final uploadUrl = uploadDetails.uploadUrl as String;
-    final mediaId = uploadDetails.mediaId as String;
+    final uploadUrl = uploadDetails['upload_url'] as String;
+    final mediaId = uploadDetails['media_id'] as String;
 
     // 3. Upload encrypted bytes directly to MinIO
-    await Dio().put(
+    await Dio().put<dynamic>(
       uploadUrl,
       data: Stream.fromIterable([encryptedFileBytes]),
       options: Options(
@@ -450,7 +451,7 @@ class MessagesRepository {
       await loadChatKeys(chatId);
     }
     final chatDevices = CryptoService.chatKeys[chatId] ?? {};
-    final recipientList = chatDevices.entries.map((e) => {
+    final recipientList = chatDevices.entries.map((e) => <String, String>{
       'device_id': e.key,
       'public_key': e.value,
     }).toList();
@@ -509,9 +510,9 @@ class MessagesRepository {
     required String filename,
   }) async {
     // 1. Get pre-signed download URL from backend
-    final downloadUrlRes = await _apiClient.dio.get('${ApiEndpoints.mediaDownload}/$mediaId');
-    final downloadDetails = downloadUrlRes.data as Map<String, dynamic>;
-    final downloadUrl = downloadDetails.downloadUrl as String;
+    final downloadUrlRes = await _apiClient.dio.get<Map<String, dynamic>>('${ApiEndpoints.mediaDownload}/$mediaId');
+    final downloadDetails = downloadUrlRes.data!;
+    final downloadUrl = downloadDetails['download_url'] as String;
 
     // 2. Fetch encrypted file stream
     final downloadResponse = await Dio().get<List<int>>(
