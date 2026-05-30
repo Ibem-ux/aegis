@@ -2,6 +2,7 @@ import { Pool } from 'pg';
 import { Message, MessageType } from '../../types';
 import { EncryptionService } from '../../services/encryption.service';
 import { ForbiddenError, NotFoundError } from '../../utils/errors';
+import { logger } from '../../utils/logger';
 
 export class MessagesService {
   /**
@@ -95,6 +96,7 @@ export class MessagesService {
     }
 
     // 2. Encrypt message content
+    logger.debug(`Message content length: ${payload.content.length}, isE2EE: ${payload.content.startsWith('{"sender_device_id"')}`);
     const { ciphertext, iv, tag } = EncryptionService.encrypt(payload.content);
     const type = payload.message_type || 'TEXT';
 

@@ -28,18 +28,21 @@ This document outlines the development phases of the **Aegis Secure Private Mess
   * Standardized whitespace trimming on incoming verification codes.
   * Enhanced backend debugging logs by outputting expected vs. received OTP values with their string lengths under warning level, making auth issues fully transparent.
 
-### Phase 4: Local Testing & Port Alignment (Current Focus)
+### Phase 4: Local Testing & Port Alignment (Completed)
 * **Goal**: Establish a stable local environment for end-to-end testing with locked host ports for the backend and frontend.
-* **Actions Required**:
-  * Resolve backend process conflicts (free up port `3000`).
+* **Key Achievements**:
+  * Resolved backend process conflicts (free up port `3000`).
   * Set a static port for the Flutter Web testing client to prevent changing links.
-  * Run the backend and frontend concurrently and verify the complete authentication loop.
+  * Verified backend server stability and concurrent Flutter testing environment.
 
-### Phase 5: End-to-End Encryption (E2EE) Validation (Next)
-* **Goal**: Verify client-side media and payload encryption.
-* **Key Focus Area**:
-  * Validate X25519 ECDH + HKDF key encapsulation mechanism inside `CryptoService` on the Flutter client.
-  * Ensure sent messages are encrypted locally before transmitting via Socket.IO, and media downloads from MinIO decrypt correctly.
+### Phase 5: End-to-End Encryption (E2EE) Validation (Current Focus)
+* **Goal**: Verify client-side media and payload encryption, hardening against silent failures.
+* **Key Achievements**:
+  * Extracted key generation logic to ensure robust X25519 ECDH initialization across all auth flows (register, login, OTP).
+  * Added validation guards for 32-byte key boundaries, empty recipient maps, and graceful plaintext fallback warnings.
+  * Corrected offline sync logic in `messages_repository` to ensure E2EE payloads are decrypted immediately upon REST sync.
+  * Created unit test suite covering single/multi-recipient E2EE, file encryption, and tamper/size boundary validations.
+  * Exposed a `/debug/e2ee-status` endpoint on the backend for fast device-key mapping visualization.
 
 ### Phase 6: Production Docker Deployment (Future)
 * **Goal**: Transition infrastructure (PostgreSQL 16, Redis 7, MinIO S3, Nginx proxy) into a production-ready docker-compose environment.

@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS devices (
     ),
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     device_name TEXT NOT NULL,
-    device_fingerprint TEXT UNIQUE NOT NULL,
+    device_fingerprint TEXT NOT NULL,
     public_key TEXT,
     platform TEXT NOT NULL CHECK(platform IN ('ANDROID', 'IOS', 'DESKTOP', 'WEB')),
     push_token TEXT,
@@ -46,7 +46,8 @@ CREATE TABLE IF NOT EXISTS devices (
     trusted_at TIMESTAMP,
     trusted_by_device_id TEXT,
     last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, device_fingerprint)
 );
 
 -- 3. Sessions Table
@@ -226,7 +227,29 @@ CREATE TABLE IF NOT EXISTS backups (
     created_by TEXT REFERENCES users(id) ON DELETE SET NULL
 );
 
+-- 13. User Chat Invite Links
+CREATE TABLE IF NOT EXISTS user_invite_links (
+    id TEXT PRIMARY KEY DEFAULT (
+        lower(hex(randomblob(4))) || '-' || 
+        lower(hex(randomblob(2))) || '-4' || 
+        substr(lower(hex(randomblob(2))),2) || '-' || 
+        substr('89ab', abs(random()) % 4 + 1, 1) || 
+        substr(lower(hex(randomblob(2))),2) || '-' || 
+        lower(hex(randomblob(6)))
+    ),
+    creator_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token TEXT UNIQUE NOT NULL, -- Cryptographically secure high-entropy token
+    label TEXT, -- User-defined label (e.g. "My Twitter bio link")
+    max_uses INTEGER DEFAULT NULL, -- NULL = unlimited uses, 1 = single-use burn link
+    use_count INTEGER DEFAULT 0,
+    expires_at TIMESTAMP, -- Optional expiration timestamp
+    is_active INTEGER DEFAULT 1 CHECK(is_active IN (0, 1)),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for performance
+CREATE UNIQUE INDEX IF NOT EXISTS idx_invite_links_token ON user_invite_links(token);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_devices_user ON devices(user_id);
 CREATE INDEX IF NOT EXISTS idx_devices_fingerprint ON devices(device_fingerprint);

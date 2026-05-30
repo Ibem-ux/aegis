@@ -14,6 +14,7 @@ import minioPlugin from './plugins/minio.plugin';
 import authPlugin from './plugins/auth.plugin';
 import rateLimitPlugin from './plugins/rate-limit.plugin';
 import socketPlugin from './plugins/socket.plugin';
+import cleanupPlugin from './plugins/cleanup.plugin';
 
 // Route Modules
 import authRoutes from './modules/auth/auth.routes';
@@ -53,6 +54,7 @@ export function buildApp(): FastifyInstance {
   app.register(authPlugin);
   app.register(rateLimitPlugin);
   app.register(socketPlugin);
+  app.register(cleanupPlugin);
 
   // Register API Routes
   app.register(async (apiInstance) => {

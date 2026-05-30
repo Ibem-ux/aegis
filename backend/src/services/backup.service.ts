@@ -2,12 +2,32 @@ import { Pool } from 'pg';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { config } from '../config';
 import { logger } from '../utils/logger';
+
+const execAsync = promisify(exec);
 
 export class BackupService {
   private static backupDir = path.resolve(__dirname, '../../../backups');
   private static backupKey = Buffer.from(config.security.backupEncryptionKey, 'hex');
+
+  private static getPgDumpPath(): string {
+    const commonPaths = [
+      'C:\\Program Files\\PostgreSQL\\18\\bin\\pg_dump.exe',
+      'C:\\Program Files\\PostgreSQL\\17\\bin\\pg_dump.exe',
+      'C:\\Program Files\\PostgreSQL\\16\\bin\\pg_dump.exe',
+      'C:\\Program Files\\PostgreSQL\\15\\bin\\pg_dump.exe',
+      'C:\\Program Files\\PostgreSQL\\14\\bin\\pg_dump.exe',
+    ];
+    for (const p of commonPaths) {
+      if (fs.existsSync(p)) {
+        return `"${p}"`;
+      }
+    }
+    return 'pg_dump'; // fallback to PATH
+  }
 
   /**
    * Initializes the backups directory.
@@ -19,13 +39,13 @@ export class BackupService {
   }
 
   /**
-   * Performs an encrypted SQLite database backup using VACUUM INTO.
+   * Performs an encrypted database backup.
+   * Uses VACUUM INTO for SQLite or pg_dump for PostgreSQL.
    */
   public static async runDatabaseBackup(db: Pool, creatorId?: string): Promise<string> {
     this.init();
     
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const tempFile = path.join(this.backupDir, `db-temp-${timestamp}.sqlite`);
     const encryptedFile = path.join(this.backupDir, `db-backup-${timestamp}.enc`);
 
     // Insert initial record in backups table
@@ -39,13 +59,37 @@ export class BackupService {
 
     logger.info(`Starting database backup task ${backupId}`);
 
-    try {
-      // Execute vacuum to dump database atomically
-      // Escape tempFile path for SQLite single quotes
-      const escapedTempFile = tempFile.replace(/'/g, "''");
-      await db.query(`VACUUM INTO '${escapedTempFile}'`);
+    let tempFile: string;
 
-      // Read the vacuumed SQLite database file
+    try {
+      if (config.database.type === 'postgres') {
+        // ─── PostgreSQL Backup via pg_dump ─────────────────────────────────
+        tempFile = path.join(this.backupDir, `db-temp-${timestamp}.sql`);
+        logger.info('Running pg_dump for PostgreSQL backup...');
+
+        // pg_dump uses the DATABASE_URL connection string
+        const pgDumpBin = BackupService.getPgDumpPath();
+        const { stderr } = await execAsync(
+          `${pgDumpBin} "${config.database.url}" --format=custom --file="${tempFile}"`,
+          { timeout: 120000 } // 2 minute timeout
+        );
+
+        if (stderr && !stderr.includes('WARNING')) {
+          logger.warn(`pg_dump stderr: ${stderr}`);
+        }
+
+        logger.info('pg_dump completed successfully');
+      } else {
+        // ─── SQLite Backup via VACUUM INTO ─────────────────────────────────
+        tempFile = path.join(this.backupDir, `db-temp-${timestamp}.sqlite`);
+
+        // Execute vacuum to dump database atomically
+        // Escape tempFile path for SQLite single quotes
+        const escapedTempFile = tempFile.replace(/'/g, "''");
+        await db.query(`VACUUM INTO '${escapedTempFile}'`);
+      }
+
+      // Read the backup file
       const plaintext = fs.readFileSync(tempFile);
 
       // Encrypt file content using AES-256-GCM
@@ -88,7 +132,7 @@ export class BackupService {
       
       await db.query('UPDATE backups SET status = \'FAILED\', completed_at = CURRENT_TIMESTAMP WHERE id = $1', [backupId]);
       
-      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+      if (tempFile! && fs.existsSync(tempFile!)) fs.unlinkSync(tempFile!);
       if (fs.existsSync(encryptedFile)) fs.unlinkSync(encryptedFile);
       
       throw err;
@@ -96,7 +140,7 @@ export class BackupService {
   }
 
   /**
-   * Decrypts an encrypted backup archive back to plaintext SQLite file.
+   * Decrypts an encrypted backup archive back to a plaintext file.
    */
   public static decryptBackup(encryptedFilePath: string, outputFilePath: string) {
     const fileBuffer = fs.readFileSync(encryptedFilePath);

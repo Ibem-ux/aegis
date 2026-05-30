@@ -27,14 +27,25 @@ class MessagesRepository {
     // Listen to incoming real-time messages and insert into local SQLite
     _socketClient.messageStream.listen((data) async {
       try {
+        final chatId = data['chat_id'] as String;
         final sender = data['sender'] as Map<String, dynamic>;
+        
+        // Ensure the chat exists in local DB (FK constraint)
+        final existingChat = await (_db.select(_db.localChats)
+              ..where((t) => t.id.equals(chatId)))
+            .getSingleOrNull();
+            
+        if (existingChat == null) {
+          await _syncSingleChat(chatId, data);
+        }
+
         final rawContent = data['content'] as String;
-        final decryptedContent = await decryptMessageContent(data['chat_id'] as String, rawContent, data['message_type'] as String);
+        final decryptedContent = await decryptMessageContent(chatId, rawContent, data['message_type'] as String);
         
         await _db.into(_db.localMessages).insert(
           LocalMessagesCompanion.insert(
             id: data['id'] as String,
-            chatId: data['chat_id'] as String,
+            chatId: chatId,
             senderId: sender['id'] as String,
             content: decryptedContent,
             messageType: data['message_type'] as String,
@@ -45,8 +56,16 @@ class MessagesRepository {
           ),
           mode: InsertMode.insertOrReplace,
         );
+
+        // Update chat preview for real-time home page updates
+        await (_db.update(_db.localChats)
+              ..where((t) => t.id.equals(chatId)))
+            .write(LocalChatsCompanion(
+              lastMessageAt: Value(DateTime.parse(data['created_at'] as String)),
+              lastMessagePreview: Value(decryptedContent),
+            ));
       } catch (e) {
-        // Silently handle duplicate insertions
+        debugPrint('Error inserting real-time message: $e');
       }
     });
 
@@ -243,7 +262,8 @@ class MessagesRepository {
           recipientDevices: recipientList,
         );
       } catch (e) {
-        // Fallback to sending plaintext if encryption engine fails
+        // WARNING: Encryption failed — message will be sent in plaintext
+        print('[MessagesRepository] ⚠️ E2EE encryption failed, falling back to plaintext: $e');
       }
     }
 
@@ -328,9 +348,34 @@ class MessagesRepository {
     _socketClient.requestSync(lastSeen, (response) async {
       if (response is Map<String, dynamic> && response['success'] == true) {
         final messages = response['messages'] as List<dynamic>? ?? [];
+        
+        // Pre-decrypt all messages sequentially before inserting
+        final List<Map<String, dynamic>> decryptedMsgs = [];
+        for (final item in messages) {
+          final msg = item as Map<String, dynamic>;
+          final rawContent = msg['content'] as String;
+          final decryptedContent = await decryptMessageContent(
+              msg['chat_id'] as String, rawContent, msg['message_type'] as String);
+          decryptedMsgs.add({
+            ...msg,
+            'decrypted_content': decryptedContent,
+          });
+        }
+
+        // Ensure all required chats exist locally before batch insert
+        for (final msg in decryptedMsgs) {
+          final chatId = msg['chat_id'] as String;
+          final existingChat = await (_db.select(_db.localChats)
+                ..where((t) => t.id.equals(chatId)))
+              .getSingleOrNull();
+              
+          if (existingChat == null) {
+            await _syncSingleChat(chatId, msg);
+          }
+        }
+
         await _db.batch((batch) {
-          for (final item in messages) {
-            final msg = item as Map<String, dynamic>;
+          for (final msg in decryptedMsgs) {
             final sender = msg['sender'] as Map<String, dynamic>;
             batch.insert(
               _db.localMessages,
@@ -338,7 +383,7 @@ class MessagesRepository {
                 id: msg['id'] as String,
                 chatId: msg['chat_id'] as String,
                 senderId: sender['id'] as String,
-                content: msg['content'] as String,
+                content: msg['decrypted_content'] as String,
                 messageType: msg['message_type'] as String,
                 mediaId: Value(msg['media_id'] as String?),
                 replyToId: Value(msg['reply_to_id'] as String?),
@@ -351,6 +396,20 @@ class MessagesRepository {
         });
       }
     });
+  }
+
+  Future<void> _syncSingleChat(String chatId, Map<String, dynamic> messageData) async {
+    final sender = messageData['sender'] as Map<String, dynamic>;
+    await _db.into(_db.localChats).insert(
+      LocalChatsCompanion.insert(
+        id: chatId,
+        recipientId: sender['id'] as String,
+        recipientUsername: sender['username'] as String? ?? 'Unknown',
+        recipientDisplayName: sender['display_name'] as String? ?? 'Unknown',
+        lastMessageAt: DateTime.now(),
+      ),
+      mode: InsertMode.insertOrReplace,
+    );
   }
 
   /// Marks all messages in a chat from other users as read and sends read receipts

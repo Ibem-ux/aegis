@@ -127,8 +127,21 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         );
       }
     } catch (e) {
+      String message = 'Failed to send verification code';
+      if (e is DioException) {
+        final data = e.response?.data;
+        if (data is Map && data.containsKey('message')) {
+          message = data['message'].toString();
+        } else if (e.response?.statusCode == 500) {
+          message = 'Server error sending verification code — please check backend logs';
+        } else if (e.type == DioExceptionType.connectionError) {
+          message = 'Cannot connect to server. Verify backend is running.';
+        }
+      } else {
+        message = 'Unexpected error: ${e.toString()}';
+      }
       setState(() {
-        _errorMessage = 'Failed to send verification code';
+        _errorMessage = message;
       });
     } finally {
       if (mounted) {
@@ -159,8 +172,21 @@ class _LoginPageState extends ConsumerState<LoginPage> {
         context.go('/home');
       }
     } catch (e) {
+      String message = 'Invalid or expired verification code';
+      if (e is DioException) {
+        final data = e.response?.data;
+        if (data is Map && data.containsKey('message')) {
+          message = data['message'].toString();
+        } else if (e.response?.statusCode == 500) {
+          message = 'Server error during verification — please check backend logs';
+        } else if (e.type == DioExceptionType.connectionError) {
+          message = 'Cannot connect to server. Verify backend is running.';
+        }
+      } else {
+        message = 'Unexpected error: ${e.toString()}';
+      }
       setState(() {
-        _errorMessage = 'Invalid or expired verification code';
+        _errorMessage = message;
       });
     } finally {
       if (mounted) {

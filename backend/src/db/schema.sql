@@ -29,7 +29,7 @@ CREATE TABLE devices (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     device_name VARCHAR(100) NOT NULL,
-    device_fingerprint VARCHAR(255) UNIQUE NOT NULL,
+    device_fingerprint VARCHAR(255) NOT NULL,
     public_key TEXT,
     platform device_platform NOT NULL,
     push_token VARCHAR(255),
@@ -37,7 +37,8 @@ CREATE TABLE devices (
     trusted_at TIMESTAMP WITH TIME ZONE,
     trusted_by_device_id UUID, -- self-referencing reference resolved logically in queries or with runtime checks
     last_active TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (user_id, device_fingerprint)
 );
 
 -- 3. Sessions Table
@@ -161,7 +162,22 @@ CREATE TABLE backups (
     created_by UUID REFERENCES users(id) ON DELETE SET NULL
 );
 
+-- 13. User Chat Invite Links
+CREATE TABLE user_invite_links (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    creator_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(64) UNIQUE NOT NULL, -- Cryptographically secure high-entropy token
+    label VARCHAR(100), -- User-defined label (e.g. "My Twitter bio link")
+    max_uses INTEGER DEFAULT NULL, -- NULL = unlimited uses, 1 = single-use burn link
+    use_count INTEGER DEFAULT 0,
+    expires_at TIMESTAMP WITH TIME ZONE, -- Optional expiration timestamp
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for performance hardening
+CREATE UNIQUE INDEX idx_invite_links_token ON user_invite_links(token);
 CREATE INDEX idx_users_username ON users(username);
 CREATE INDEX idx_devices_user ON devices(user_id);
 CREATE INDEX idx_devices_fingerprint ON devices(device_fingerprint);

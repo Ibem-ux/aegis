@@ -2,6 +2,8 @@ import { Pool } from 'pg';
 import { Chat } from '../../types';
 import { BadRequestError, NotFoundError, ForbiddenError } from '../../utils/errors';
 import { EncryptionService } from '../../services/encryption.service';
+import { logger } from '../../utils/logger';
+import crypto from 'crypto';
 
 export class ChatsService {
   /**
@@ -152,7 +154,173 @@ export class ChatsService {
          AND d.public_key IS NOT NULL`,
       [chatId]
     );
+
+    // Log count of excluded devices for diagnostics
+    const allDevicesRes = await db.query(
+      `SELECT COUNT(*) as total FROM chat_participants cp
+       JOIN devices d ON cp.user_id = d.user_id
+       WHERE cp.chat_id = $1`,
+      [chatId]
+    );
+    const totalDevices = Number(allDevicesRes.rows[0]?.total || 0);
+    if (totalDevices > keysRes.rows.length) {
+      logger.warn(`Chat ${chatId}: ${totalDevices - keysRes.rows.length} device(s) excluded from E2EE (untrusted or missing public key)`);
+    }
+
     return keysRes.rows;
+  }
+
+  /**
+   * Generates a secure invite link for the user.
+   */
+  public static async createInviteLink(
+    db: Pool,
+    creatorId: string,
+    options: { max_uses?: number | null; expires_at?: string; label?: string }
+  ): Promise<{ token: string; id: string }> {
+    const token = crypto.randomBytes(32).toString('hex');
+    const result = await db.query(
+      `INSERT INTO user_invite_links (creator_id, token, label, max_uses, expires_at)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, token`,
+      [creatorId, token, options.label || null, options.max_uses ?? null, options.expires_at || null]
+    );
+    return result.rows[0];
+  }
+
+  /**
+   * Retrieves active invite links created by the user.
+   */
+  public static async getUserInviteLinks(db: Pool, userId: string): Promise<any[]> {
+    const result = await db.query(
+      `SELECT id, token, label, max_uses, use_count, expires_at, is_active, created_at
+       FROM user_invite_links
+       WHERE creator_id = $1
+       ORDER BY created_at DESC`,
+      [userId]
+    );
+    return result.rows;
+  }
+
+  /**
+   * Toggles the active status of an invite link.
+   */
+  public static async toggleInviteLinkActive(db: Pool, userId: string, inviteId: string, isActive: boolean): Promise<void> {
+    const result = await db.query(
+      `UPDATE user_invite_links SET is_active = $3, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1 AND creator_id = $2`,
+      [inviteId, userId, isActive]
+    );
+    if (result.rowCount === 0) {
+      throw new NotFoundError('Invite link not found');
+    }
+  }
+
+  /**
+   * Permanently deletes an invite link.
+   */
+  public static async deleteInviteLink(db: Pool, userId: string, inviteId: string): Promise<void> {
+    const result = await db.query(
+      `DELETE FROM user_invite_links WHERE id = $1 AND creator_id = $2`,
+      [inviteId, userId]
+    );
+    if (result.rowCount === 0) {
+      throw new NotFoundError('Invite link not found');
+    }
+  }
+
+  /**
+   * Deletes inactive invite links that haven't been updated in 7 days.
+   */
+  public static async cleanupStaleInviteLinks(db: Pool): Promise<number> {
+    const staleThreshold = new Date();
+    staleThreshold.setDate(staleThreshold.getDate() - 7);
+    const result = await db.query(
+      `DELETE FROM user_invite_links 
+       WHERE is_active = FALSE 
+       AND updated_at < $1`,
+       [staleThreshold]
+    );
+    return result.rowCount || 0;
+  }
+
+  /**
+   * Accepts an invite link: blocks self-invites, checks validity, and creates/gets chat.
+   */
+  public static async acceptInviteLink(
+    db: Pool,
+    claimerId: string,
+    token: string
+  ): Promise<{ chat_id: string; isNew: boolean; creator_id: string; creator_keys: any[] }> {
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // 1. Validate token
+      const inviteRes = await client.query(
+        `SELECT id, creator_id, max_uses, use_count, expires_at, is_active
+         FROM user_invite_links WHERE token = $1 FOR UPDATE`,
+        [token]
+      );
+
+      if (inviteRes.rows.length === 0) {
+        throw new NotFoundError('Invalid invite link');
+      }
+
+      const invite = inviteRes.rows[0];
+
+      if (!invite.is_active) {
+        throw new BadRequestError('Invite link is no longer active');
+      }
+      if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+        throw new BadRequestError('Invite link has expired');
+      }
+      if (invite.max_uses !== null && invite.use_count >= invite.max_uses) {
+        throw new BadRequestError('Invite link maximum uses reached');
+      }
+      if (invite.creator_id === claimerId) {
+        throw new BadRequestError('You cannot accept your own invite link');
+      }
+
+      // 2. Increment usage
+      await client.query(
+        `UPDATE user_invite_links 
+         SET use_count = use_count + 1,
+             is_active = CASE WHEN max_uses IS NOT NULL AND use_count + 1 >= max_uses THEN FALSE ELSE is_active END
+         WHERE id = $1`,
+        [invite.id]
+      );
+
+      // 3. Create or get chat (using existing logic but modified for transaction if needed)
+      // We can just call createOrGetChat, but it uses its own transaction or query, which is fine
+      // However, to keep it clean, we'll do the logic here if needed, or commit and then call createOrGetChat.
+      // Let's commit the invite usage first to ensure it's recorded even if chat creation somehow fails or succeeds.
+      await client.query('COMMIT');
+      client.release();
+
+      // Proceed to create/get chat using the normal method
+      const chatResult = await this.createOrGetChat(db, claimerId, invite.creator_id);
+
+      // 4. Fetch the creator's E2EE public keys to return to the claimer
+      const keysRes = await db.query(
+        `SELECT id AS device_id, public_key
+         FROM devices
+         WHERE user_id = $1 AND is_trusted = TRUE AND public_key IS NOT NULL`,
+        [invite.creator_id]
+      );
+
+      return {
+        chat_id: chatResult.chat_id,
+        isNew: chatResult.isNew,
+        creator_id: invite.creator_id,
+        creator_keys: keysRes.rows,
+      };
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      client.release();
+      throw error;
+    }
   }
 }
 

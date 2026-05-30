@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:socket_io_client/socket_io_client.dart' as io;
+import 'package:flutter/foundation.dart';
 import '../secure_storage/secure_storage.dart';
 import 'api_endpoints.dart';
 
@@ -13,11 +14,13 @@ class SocketClient {
   final _typingController = StreamController<Map<String, dynamic>>.broadcast();
   final _readAckController = StreamController<Map<String, dynamic>>.broadcast();
   final _statusController = StreamController<Map<String, dynamic>>.broadcast();
+  final _chatCreatedController = StreamController<Map<String, dynamic>>.broadcast();
 
   Stream<Map<String, dynamic>> get messageStream => _messageController.stream;
   Stream<Map<String, dynamic>> get presenceStream => _presenceController.stream;
   Stream<Map<String, dynamic>> get typingStream => _typingController.stream;
   Stream<Map<String, dynamic>> get readAckStream => _readAckController.stream;
+  Stream<Map<String, dynamic>> get chatCreatedStream => _chatCreatedController.stream;
   /// Unified delivery status stream (DELIVERED / READ)
   Stream<Map<String, dynamic>> get statusStream => _statusController.stream;
 
@@ -43,11 +46,22 @@ class SocketClient {
     );
 
     _socket!.onConnect((_) {
+      debugPrint('[SocketClient] Connected successfully to default namespace on ${ApiEndpoints.wsUrl}');
       // Trigger external sync callback (e.g., offline queue processing)
       onConnectCallback?.call();
     });
 
-    _socket!.onDisconnect((_) {});
+    _socket!.onDisconnect((data) {
+      debugPrint('[SocketClient] Disconnected from socket: $data');
+    });
+
+    _socket!.onConnectError((data) {
+      debugPrint('[SocketClient] Socket connection error: $data');
+    });
+
+    _socket!.onError((data) {
+      debugPrint('[SocketClient] Socket error: $data');
+    });
 
     // Listeners for standard chat events
     _socket!.on('message:receive', (data) {
@@ -77,6 +91,12 @@ class SocketClient {
     _socket!.on('message:status', (data) {
       if (data is Map<String, dynamic>) {
         _statusController.add(data);
+      }
+    });
+
+    _socket!.on('chat_created', (data) {
+      if (data is Map<String, dynamic>) {
+        _chatCreatedController.add(data);
       }
     });
 
@@ -144,6 +164,7 @@ class SocketClient {
     _typingController.close();
     _readAckController.close();
     _statusController.close();
+    _chatCreatedController.close();
     disconnect();
   }
 }

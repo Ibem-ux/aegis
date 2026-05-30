@@ -19,6 +19,9 @@ export default async function authRoutes(fastify: FastifyInstance) {
   // TEMPORARY: Debug endpoint for testing credential validation
   fastify.post('/debug-login', AuthController.debugLogin);
 
+  // Temporary debug endpoint for E2EE status
+  fastify.get('/debug/e2ee-status', { preHandler: [fastify.authenticate] }, AuthController.e2eeDebugStatus);
+
   // Authenticated Routes
   fastify.register(async (authenticatedInstance) => {
     // Add preValidation hook to enforce JWT authentication

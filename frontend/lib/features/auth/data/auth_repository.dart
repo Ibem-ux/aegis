@@ -12,6 +12,24 @@ class AuthRepository {
 
   AuthRepository(this._apiClient);
 
+  /// Ensures an X25519 key pair exists in secure storage.
+  /// Returns the base64-encoded public key.
+  Future<String> _ensureKeyPair() async {
+    String? pubKey = await _secureStorage.getDevicePublicKey();
+    if (pubKey == null) {
+      final x25519 = X25519();
+      final keyPair = await x25519.newKeyPair();
+      final privateKeyBytes = await keyPair.extractPrivateKeyBytes();
+      final publicKey = await keyPair.extractPublicKey();
+      pubKey = base64.encode(publicKey.bytes);
+      await _secureStorage.saveDeviceKeyPair(
+        privateKey: base64.encode(privateKeyBytes),
+        publicKey: pubKey,
+      );
+    }
+    return pubKey;
+  }
+
   /// Registers user using QR invite code
   Future<Map<String, dynamic>> register({
     required String username,
@@ -20,20 +38,7 @@ class AuthRepository {
     required String displayName,
   }) async {
     // Generate keypair if not exists
-    String? pubKey = await _secureStorage.getDevicePublicKey();
-    if (pubKey == null) {
-      final x25519 = X25519();
-      final keyPair = await x25519.newKeyPair();
-      final privateKeyBytes = await keyPair.extractPrivateKeyBytes();
-      final publicKey = await keyPair.extractPublicKey();
-      final publicKeyBytes = publicKey.bytes;
-      
-      pubKey = base64.encode(publicKeyBytes);
-      await _secureStorage.saveDeviceKeyPair(
-        privateKey: base64.encode(privateKeyBytes),
-        publicKey: pubKey,
-      );
-    }
+    final pubKey = await _ensureKeyPair();
 
     final fingerprint = await DeviceInfo.getFingerprint();
     final name = DeviceInfo.getDeviceName();
@@ -78,20 +83,7 @@ class AuthRepository {
     required String password,
   }) async {
     // Generate keypair if not exists
-    String? pubKey = await _secureStorage.getDevicePublicKey();
-    if (pubKey == null) {
-      final x25519 = X25519();
-      final keyPair = await x25519.newKeyPair();
-      final privateKeyBytes = await keyPair.extractPrivateKeyBytes();
-      final publicKey = await keyPair.extractPublicKey();
-      final publicKeyBytes = publicKey.bytes;
-      
-      pubKey = base64.encode(publicKeyBytes);
-      await _secureStorage.saveDeviceKeyPair(
-        privateKey: base64.encode(privateKeyBytes),
-        publicKey: pubKey,
-      );
-    }
+    final pubKey = await _ensureKeyPair();
 
     final fingerprint = await DeviceInfo.getFingerprint();
     final name = DeviceInfo.getDeviceName();
@@ -196,20 +188,7 @@ class AuthRepository {
     required String code,
   }) async {
     // Generate keypair if not exists
-    String? pubKey = await _secureStorage.getDevicePublicKey();
-    if (pubKey == null) {
-      final x25519 = X25519();
-      final keyPair = await x25519.newKeyPair();
-      final privateKeyBytes = await keyPair.extractPrivateKeyBytes();
-      final publicKey = await keyPair.extractPublicKey();
-      final publicKeyBytes = publicKey.bytes;
-      
-      pubKey = base64.encode(publicKeyBytes);
-      await _secureStorage.saveDeviceKeyPair(
-        privateKey: base64.encode(privateKeyBytes),
-        publicKey: pubKey,
-      );
-    }
+    final pubKey = await _ensureKeyPair();
 
     final fingerprint = await DeviceInfo.getFingerprint();
     final name = DeviceInfo.getDeviceName();

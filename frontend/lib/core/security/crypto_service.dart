@@ -97,6 +97,11 @@ class CryptoService {
     required String myDeviceId,
     required List<Map<String, dynamic>> recipientDevices,
   }) async {
+    final seedBytes = base64.decode(myPrivateKeyBase64);
+    if (seedBytes.length != 32) {
+      throw ArgumentError('Invalid X25519 private key length: ${seedBytes.length} (expected 32)');
+    }
+
     final random = Random.secure();
     
     // 1. Generate random 256-bit message key K_msg
@@ -117,7 +122,7 @@ class CryptoService {
     
     // 3. Load local X25519 private key
     final x25519 = X25519();
-    final myKeyPair = await x25519.newKeyPairFromSeed(base64.decode(myPrivateKeyBase64));
+    final myKeyPair = await x25519.newKeyPairFromSeed(seedBytes);
     
     // 4. Encrypt K_msg for each trusted device's public key
     final Map<String, Map<String, String>> encryptedKeysMap = {};
@@ -165,8 +170,14 @@ class CryptoService {
           'iv': base64.encode(keyIv),
         };
       } catch (e) {
-        // Continue wrapping for other devices even if one fails
+        // Log and continue — wrapping for remaining devices
+        print('[CryptoService] WARNING: Failed to wrap K_msg for device $deviceId: $e');
       }
+    }
+    
+    // Validate at least one recipient device was wrapped
+    if (encryptedKeysMap.isEmpty) {
+      throw Exception('E2EE failed: could not wrap message key for any recipient device');
     }
     
     // 5. Build E2EE JSON envelope
@@ -185,6 +196,11 @@ class CryptoService {
     required String myDeviceId,
     required String senderPublicKeyBase64,
   }) async {
+    final seedBytes = base64.decode(myPrivateKeyBase64);
+    if (seedBytes.length != 32) {
+      throw ArgumentError('Invalid X25519 private key length: ${seedBytes.length} (expected 32)');
+    }
+
     final payloadMap = json.decode(payloadJson) as Map<String, dynamic>;
     final bodyCombined = base64.decode(payloadMap['ciphertext'] as String);
     final bodyIv = base64.decode(payloadMap['iv'] as String);
@@ -200,7 +216,7 @@ class CryptoService {
     
     // 1. Derive shared secret and derived AES key
     final x25519 = X25519();
-    final myKeyPair = await x25519.newKeyPairFromSeed(base64.decode(myPrivateKeyBase64));
+    final myKeyPair = await x25519.newKeyPairFromSeed(seedBytes);
     final remotePublicKey = SimplePublicKey(
       base64.decode(senderPublicKeyBase64),
       type: KeyPairType.x25519,

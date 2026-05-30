@@ -10,7 +10,14 @@ export const config = {
   host: process.env.HOST || '0.0.0.0',
 
   database: {
+    type: (process.env.DATABASE_TYPE || 'sqlite') as 'sqlite' | 'postgres',
     path: process.env.DATABASE_PATH || 'data/database.sqlite',
+    url: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/ibemdb',
+  },
+
+  redis: {
+    enabled: process.env.REDIS_ENABLED === 'true',
+    url: process.env.REDIS_URL || 'redis://localhost:6379',
   },
 
   uploads: {

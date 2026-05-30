@@ -4,7 +4,7 @@ import { OtpService } from '../../services/otp.service';
 import { EmailService } from '../../services/email.service';
 import { Helpers } from '../../utils/helpers';
 import { RegisterBody, LoginBody, RefreshBody, VerifyOtpBody } from './auth.types';
-import { BadRequestError, UnauthorizedError, ForbiddenError } from '../../utils/errors';
+import { BadRequestError, UnauthorizedError, ForbiddenError, NotFoundError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
 
 interface OtpEntry {
@@ -269,7 +269,16 @@ export class AuthController {
       expiresAt: Date.now() + OTP_EXPIRY_MS
     });
 
-    await EmailService.sendOtp(normalizedEmail, otp);
+    const sent = await EmailService.sendOtp(normalizedEmail, otp);
+    if (!sent) {
+      // Clean up the cached OTP — no point keeping it if the email never arrived
+      emailOtpCache.delete(normalizedEmail);
+      logger.error(`OTP email delivery failed for ${normalizedEmail} — cleared OTP cache`);
+      return reply.status(500).send({
+        error: 'Email Delivery Failed',
+        message: 'Failed to send verification email. Please check your email address and try again later.'
+      });
+    }
 
     return reply.status(200).send({
       message: 'Verification code sent to your email'
@@ -409,6 +418,55 @@ export class AuthController {
       status: user.status,
       passwordValid,
       hashPrefix: user.password_hash?.substring(0, 20) + '...',
+    });
+  }
+
+  /**
+   * Diagnostic endpoint for checking E2EE status.
+   */
+  public static async e2eeDebugStatus(request: FastifyRequest, reply: FastifyReply) {
+    const user = request.user as { userId: string; deviceId?: string } | undefined;
+    if (!user || !user.deviceId) throw new UnauthorizedError();
+    const db = request.server.db;
+
+    const deviceRes = await db.query('SELECT * FROM devices WHERE id = $1', [user.deviceId]);
+    const device = deviceRes.rows[0];
+
+    if (!device) {
+      throw new NotFoundError('Device not found');
+    }
+
+    const chatsRes = await db.query(`
+      SELECT c.id as chat_id
+      FROM chat_participants cp
+      JOIN chats c ON cp.chat_id = c.id
+      WHERE cp.user_id = $1
+    `, [user.userId]);
+
+    const chatStats = [];
+    for (const chat of chatsRes.rows) {
+      const chatDevices = await db.query(`
+        SELECT COUNT(*) as total_devices,
+               SUM(CASE WHEN d.public_key IS NOT NULL AND d.is_trusted = TRUE THEN 1 ELSE 0 END) as e2ee_capable_devices
+        FROM chat_participants cp
+        JOIN devices d ON cp.user_id = d.user_id
+        WHERE cp.chat_id = $1
+      `, [chat.chat_id]);
+      
+      const stats = chatDevices.rows[0];
+      chatStats.push({
+        chat_id: chat.chat_id,
+        total_devices: Number(stats.total_devices),
+        e2ee_capable_devices: Number(stats.e2ee_capable_devices)
+      });
+    }
+
+    return reply.status(200).send({
+      device_id: device.id,
+      is_trusted: device.is_trusted,
+      has_public_key: !!device.public_key,
+      public_key: device.public_key,
+      chat_stats: chatStats
     });
   }
 }

@@ -12,7 +12,7 @@ class ApiEndpoints {
   }
 
   static String get baseUrl => 'http://$host/api';
-  static String get wsUrl => 'http://$host/chat';
+  static String get wsUrl => 'http://$host';
 
   // Auth Endpoints
   static const String register = '/auth/register';
@@ -35,6 +35,8 @@ class ApiEndpoints {
 
   // Chats & Messages
   static const String chats = '/chats';
+  static const String chatInvites = '/chats/invites';
+  static const String acceptInvite = '/chats/invites/accept';
   static const String messages = '/messages';
 
   // Media

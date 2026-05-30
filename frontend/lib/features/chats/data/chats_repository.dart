@@ -125,41 +125,53 @@ class ChatsRepository {
     }
   }
 
-  /// Starts a new conversation or retrieves existing 1:1 chat
-  Future<String> startChat(String recipientUsername) async {
-    // 1. Search for user ID
-    final searchRes = await _apiClient.dio.get<List<dynamic>>(
-      ApiEndpoints.searchUsers,
-      queryParameters: {'search': recipientUsername},
-    );
-    final results = searchRes.data as List<dynamic>;
-    if (results.isEmpty) {
-      throw Exception('User not found');
-    }
-    final targetUser = results.first as Map<String, dynamic>;
-    final recipientId = targetUser['id'] as String;
-
-    // 2. Create chat room on API
+  /// Generates a new secure invite link
+  Future<Map<String, dynamic>> generateInviteLink({int? maxUses, String? label}) async {
     final response = await _apiClient.dio.post<Map<String, dynamic>>(
-      ApiEndpoints.chats,
-      data: {'recipient_id': recipientId},
+      ApiEndpoints.chatInvites,
+      data: {
+        if (maxUses != null) 'max_uses': maxUses,
+        if (label != null) 'label': label,
+      },
     );
-    final data = response.data as Map<String, dynamic>;
-    final chatId = data['chat_id'] as String;
+    return response.data!;
+  }
 
-    // 3. Save chat record locally
-    await _db.into(_db.localChats).insert(
-          LocalChatsCompanion.insert(
-            id: chatId,
-            recipientId: recipientId,
-            recipientUsername: targetUser['username'] as String,
-            recipientDisplayName: targetUser['display_name'] as String,
-            recipientAvatarUrl: Value(targetUser['avatar_url'] as String?),
-            lastMessageAt: DateTime.now(),
-            lastMessagePreview: const Value('[New Chat]'),
-          ),
-          mode: InsertMode.insertOrReplace,
-        );
+  /// Retrieves active invite links created by the user
+  Future<List<Map<String, dynamic>>> getMyInviteLinks() async {
+    final response = await _apiClient.dio.get<List<dynamic>>(ApiEndpoints.chatInvites);
+    return response.data!.cast<Map<String, dynamic>>();
+  }
+
+  /// Toggles the active status of an invite link
+  Future<void> toggleInviteLink(String inviteId, bool isActive) async {
+    await _apiClient.dio.patch<dynamic>(
+      '${ApiEndpoints.chatInvites}/$inviteId',
+      data: {'is_active': isActive},
+    );
+  }
+
+  /// Permanently deletes an invite link
+  Future<void> deleteInviteLink(String inviteId) async {
+    await _apiClient.dio.delete<dynamic>('${ApiEndpoints.chatInvites}/$inviteId');
+  }
+
+  /// Accepts an invite link and establishes a new conversation
+  Future<String> acceptInviteLink(String token) async {
+    // 1. Accept on backend
+    final response = await _apiClient.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.acceptInvite,
+      data: {'token': token},
+    );
+    final data = response.data!;
+    final chatId = data['chat_id'] as String;
+    
+    // We can run a sync to ensure we have the latest chat metadata including
+    // the new recipient's display name and avatar (which isn't strictly returned
+    // by the accept endpoint, but is available if we sync).
+    // The server does return creator_id and creator_keys, but the simplest 
+    // way to get full participant details for local DB is to sync all chats.
+    await syncChatsWithApi();
 
     return chatId;
   }
