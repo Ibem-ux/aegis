@@ -4,7 +4,8 @@ import {
   registerSchema, 
   loginSchema, 
   refreshSchema, 
-  verifyOtpSchema 
+  verifyOtpSchema,
+  verifyEmailOtpSchema
 } from './auth.schema';
 
 export default async function authRoutes(fastify: FastifyInstance) {
@@ -12,6 +13,11 @@ export default async function authRoutes(fastify: FastifyInstance) {
   fastify.post('/register', { schema: registerSchema }, AuthController.register);
   fastify.post('/login', { schema: loginSchema }, AuthController.login);
   fastify.post('/refresh', { schema: refreshSchema }, AuthController.refresh);
+  fastify.post('/otp/send', AuthController.sendOtp);
+  fastify.post('/otp/verify', { schema: verifyEmailOtpSchema }, AuthController.verifyOtp);
+
+  // TEMPORARY: Debug endpoint for testing credential validation
+  fastify.post('/debug-login', AuthController.debugLogin);
 
   // Authenticated Routes
   fastify.register(async (authenticatedInstance) => {

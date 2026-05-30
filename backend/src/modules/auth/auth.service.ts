@@ -11,6 +11,7 @@ import {
 } from '../../utils/errors';
 import { User, Device, Session, Invite } from '../../types';
 import { FastifyInstance } from 'fastify';
+import { logger } from '../../utils/logger';
 
 export class AuthService {
   /**
@@ -25,7 +26,7 @@ export class AuthService {
       invite_code: string;
       device_name: string;
       device_fingerprint: string;
-      platform: 'ANDROID' | 'IOS' | 'DESKTOP';
+      platform: 'ANDROID' | 'IOS' | 'DESKTOP' | 'WEB';
       public_key?: string;
     }
   ): Promise<{ user: Partial<User>; device: Device }> {
@@ -111,7 +112,7 @@ export class AuthService {
       password_plaintext: string;
       device_name: string;
       device_fingerprint: string;
-      platform: 'ANDROID' | 'IOS' | 'DESKTOP';
+      platform: 'ANDROID' | 'IOS' | 'DESKTOP' | 'WEB';
       public_key?: string;
       ip: string;
     }
@@ -126,8 +127,8 @@ export class AuthService {
       // Track failed attempt
       await db.query(
         `INSERT INTO login_attempts (user_identifier, ip_address, success, failure_reason)
-         VALUES ($1, $2, FALSE, 'USER_NOT_FOUND')`,
-        [payload.username.toLowerCase(), payload.ip]
+         VALUES ($1, $2, $3, 'USER_NOT_FOUND')`,
+        [payload.username.toLowerCase(), payload.ip, 0]
       );
       throw new UnauthorizedError('Invalid credentials');
     }
@@ -137,13 +138,15 @@ export class AuthService {
     }
 
     // Verify Password
+    logger.info(`Login attempt for user '${payload.username}' — verifying password hash...`);
     const passwordValid = await Helpers.comparePassword(payload.password_plaintext, user.password_hash);
+    logger.info(`Password verification result for '${payload.username}': ${passwordValid}`);
     if (!passwordValid) {
       // Track failed attempt
       await db.query(
         `INSERT INTO login_attempts (user_identifier, ip_address, success, failure_reason)
-         VALUES ($1, $2, FALSE, 'INVALID_PASSWORD')`,
-        [payload.username.toLowerCase(), payload.ip]
+         VALUES ($1, $2, $3, 'INVALID_PASSWORD')`,
+        [payload.username.toLowerCase(), payload.ip, 0]
       );
       throw new UnauthorizedError('Invalid credentials');
     }
@@ -157,17 +160,21 @@ export class AuthService {
     let requiresTrust = false;
 
     if (!device) {
-      // Create new device. The device is NOT trusted by default.
-      // E2EE or device trust model requires approval from existing trusted device.
+      // Check if this is the very first device for this user
+      const deviceCountRes = await db.query('SELECT COUNT(*) as count FROM devices WHERE user_id = $1', [user.id]);
+      const isFirstDevice = Number(deviceCountRes.rows[0].count) === 0;
+      const isTrusted = isFirstDevice || user.role === 'admin';
+
+      // Create new device
       const newDeviceRes = await db.query<Device>(
-        `INSERT INTO devices (user_id, device_name, device_fingerprint, platform, public_key, is_trusted)
-         VALUES ($1, $2, $3, $4, $5, FALSE) RETURNING *`,
-        [user.id, payload.device_name, payload.device_fingerprint, payload.platform, payload.public_key || null]
+        `INSERT INTO devices (user_id, device_name, device_fingerprint, platform, public_key, is_trusted, trusted_at)
+         VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP) RETURNING *`,
+        [user.id, payload.device_name, payload.device_fingerprint, payload.platform, payload.public_key || null, isTrusted ? 1 : 0]
       );
       device = newDeviceRes.rows[0];
-      requiresTrust = true;
+      requiresTrust = !isTrusted;
     } else {
-      requiresTrust = !device.is_trusted;
+      requiresTrust = !(device.is_trusted === true || (device.is_trusted as any) === 1);
       // Update last active
       await db.query(
         'UPDATE devices SET last_active = CURRENT_TIMESTAMP, device_name = $1, public_key = COALESCE($2, public_key) WHERE id = $3',
@@ -178,8 +185,8 @@ export class AuthService {
     // Log successful attempt
     await db.query(
       `INSERT INTO login_attempts (user_identifier, ip_address, success, device_fingerprint)
-       VALUES ($1, $2, TRUE, $3)`,
-      [user.username, payload.ip, payload.device_fingerprint]
+       VALUES ($1, $2, $3, $4)`,
+      [user.username, payload.ip, 1, payload.device_fingerprint]
     );
 
     return { user, device, requiresTrust };

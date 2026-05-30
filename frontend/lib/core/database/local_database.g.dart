@@ -1280,7 +1280,7 @@ final class $$LocalChatsTableReferences
 
   $$LocalMessagesTableProcessedTableManager get localMessagesRefs {
     final manager = $$LocalMessagesTableTableManager($_db, $_db.localMessages)
-        .filter((f) => f.chatId.id($_item.id));
+        .filter((f) => f.chatId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_localMessagesRefsTable($_db));
     return ProcessedTableManager(
@@ -1523,7 +1523,8 @@ class $$LocalChatsTableTableManager extends RootTableManager<
               getPrefetchedDataCallback: (items) async {
                 return [
                   if (localMessagesRefs)
-                    await $_getPrefetchedData(
+                    await $_getPrefetchedData<LocalChat, $LocalChatsTable,
+                            LocalMessage>(
                         currentTable: table,
                         referencedTable: $$LocalChatsTableReferences
                             ._localMessagesRefsTable(db),
@@ -1589,10 +1590,11 @@ final class $$LocalMessagesTableReferences
       db.localChats.createAlias(
           $_aliasNameGenerator(db.localMessages.chatId, db.localChats.id));
 
-  $$LocalChatsTableProcessedTableManager? get chatId {
-    if ($_item.chatId == null) return null;
+  $$LocalChatsTableProcessedTableManager get chatId {
+    final $_column = $_itemColumn<String>('chat_id')!;
+
     final manager = $$LocalChatsTableTableManager($_db, $_db.localChats)
-        .filter((f) => f.id($_item.chatId!));
+        .filter((f) => f.id.sqlEquals($_column));
     final item = $_typedResult.readTableOrNull(_chatIdTable($_db));
     if (item == null) return manager;
     return ProcessedTableManager(

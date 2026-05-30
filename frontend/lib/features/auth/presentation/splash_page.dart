@@ -46,9 +46,9 @@ class _SplashPageState extends State<SplashPage> {
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: AegisTheme.cardColor.withOpacity(0.4),
+                  color: AegisTheme.cardColor.withValues(alpha: 0.4),
                   shape: BoxShape.circle,
-                  border: Border.all(color: AegisTheme.accentBlue.withOpacity(0.3), width: 1.5),
+                  border: Border.all(color: AegisTheme.accentBlue.withValues(alpha: 0.3), width: 1.5),
                 ),
                 child: const Icon(
                   Icons.shield_outlined,
@@ -67,7 +67,7 @@ class _SplashPageState extends State<SplashPage> {
               ),
               const SizedBox(height: 8),
               Text(
-                'SECURE COMMUNICATION NODE',
+                'ENCRYPTED SECURE MESSENGER',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   letterSpacing: 2.0,
                   color: AegisTheme.accentBlue,

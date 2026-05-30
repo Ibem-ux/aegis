@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
     totp_secret TEXT,
     totp_enabled INTEGER DEFAULT 0 CHECK(totp_enabled IN (0, 1)),
     status TEXT DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE', 'SUSPENDED', 'PENDING')),
+    role TEXT DEFAULT 'user' CHECK(role IN ('user', 'admin')),
     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -39,7 +40,7 @@ CREATE TABLE IF NOT EXISTS devices (
     device_name TEXT NOT NULL,
     device_fingerprint TEXT UNIQUE NOT NULL,
     public_key TEXT,
-    platform TEXT NOT NULL CHECK(platform IN ('ANDROID', 'IOS', 'DESKTOP')),
+    platform TEXT NOT NULL CHECK(platform IN ('ANDROID', 'IOS', 'DESKTOP', 'WEB')),
     push_token TEXT,
     is_trusted INTEGER DEFAULT 0 CHECK(is_trusted IN (0, 1)),
     trusted_at TIMESTAMP,

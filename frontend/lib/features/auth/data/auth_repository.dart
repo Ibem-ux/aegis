@@ -181,6 +181,68 @@ class AuthRepository {
     // If not authorized yet, we retry the login check.
     return false;
   }
+
+  /// Sends OTP to user's email
+  Future<void> sendOtp({required String email}) async {
+    await _apiClient.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.sendOtp,
+      data: {'email': email},
+    );
+  }
+
+  /// Verifies email OTP and registers or logs in user
+  Future<void> verifyOtp({
+    required String email,
+    required String code,
+  }) async {
+    // Generate keypair if not exists
+    String? pubKey = await _secureStorage.getDevicePublicKey();
+    if (pubKey == null) {
+      final x25519 = X25519();
+      final keyPair = await x25519.newKeyPair();
+      final privateKeyBytes = await keyPair.extractPrivateKeyBytes();
+      final publicKey = await keyPair.extractPublicKey();
+      final publicKeyBytes = publicKey.bytes;
+      
+      pubKey = base64.encode(publicKeyBytes);
+      await _secureStorage.saveDeviceKeyPair(
+        privateKey: base64.encode(privateKeyBytes),
+        publicKey: pubKey,
+      );
+    }
+
+    final fingerprint = await DeviceInfo.getFingerprint();
+    final name = DeviceInfo.getDeviceName();
+    final platform = DeviceInfo.getPlatform();
+
+    final response = await _apiClient.dio.post<Map<String, dynamic>>(
+      ApiEndpoints.verifyOtp,
+      data: {
+        'email': email,
+        'code': code,
+        'device_name': name,
+        'device_fingerprint': fingerprint,
+        'platform': platform,
+        'public_key': pubKey,
+      },
+    );
+
+    final data = response.data as Map<String, dynamic>;
+    final tokens = data['tokens'] as Map<String, dynamic>;
+    final user = data['user'] as Map<String, dynamic>;
+    final device = data['device'] as Map<String, dynamic>;
+
+    await _secureStorage.saveTokens(
+      accessToken: tokens['accessToken'] as String,
+      refreshToken: tokens['refreshToken'] as String,
+    );
+
+    await _secureStorage.saveUserInfo(
+      userId: user['id'] as String,
+      username: user['username'] as String,
+      deviceId: device['id'] as String,
+    );
+  }
 }
 
 enum LoginStatus { success, requires2FA, requiresDeviceTrust }

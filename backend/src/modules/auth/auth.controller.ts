@@ -1,10 +1,19 @@
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { AuthService } from './auth.service';
 import { OtpService } from '../../services/otp.service';
+import { EmailService } from '../../services/email.service';
 import { Helpers } from '../../utils/helpers';
 import { RegisterBody, LoginBody, RefreshBody, VerifyOtpBody } from './auth.types';
 import { BadRequestError, UnauthorizedError, ForbiddenError } from '../../utils/errors';
 import { logger } from '../../utils/logger';
+
+interface OtpEntry {
+  otp: string;
+  expiresAt: number;
+}
+const emailOtpCache = new Map<string, OtpEntry>();
+
+const OTP_EXPIRY_MS = 15 * 60 * 1000; // 15 minutes
 
 export class AuthController {
   /**
@@ -239,6 +248,167 @@ export class AuthController {
 
     return reply.status(200).send({
       message: '2FA successfully enabled'
+    });
+  }
+
+  /**
+   * Generates and sends a 6-digit OTP verification code to the target email.
+   */
+  public static async sendOtp(request: FastifyRequest<{ Body: { email: string } }>, reply: FastifyReply) {
+    const { email } = request.body;
+    if (!email || !email.includes('@')) {
+      throw new BadRequestError('Invalid email address');
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Generate 6 digit numeric code
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    emailOtpCache.set(normalizedEmail, {
+      otp,
+      expiresAt: Date.now() + OTP_EXPIRY_MS
+    });
+
+    await EmailService.sendOtp(normalizedEmail, otp);
+
+    return reply.status(200).send({
+      message: 'Verification code sent to your email'
+    });
+  }
+
+  /**
+   * Verifies the email OTP, registers/logs in the user, and trusts the device.
+   */
+  public static async verifyOtp(
+    request: FastifyRequest<{
+      Body: {
+        email: string;
+        code: string;
+        device_name: string;
+        device_fingerprint: string;
+        platform: 'ANDROID' | 'IOS' | 'DESKTOP' | 'WEB';
+        public_key?: string;
+      }
+    }>,
+    reply: FastifyReply
+  ) {
+    const { email, code, device_name, device_fingerprint, platform, public_key } = request.body;
+
+    if (!email || !code) {
+      throw new BadRequestError('Email and verification code are required');
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedCode = code.trim();
+
+    const cached = emailOtpCache.get(normalizedEmail);
+    if (!cached) {
+      throw new UnauthorizedError('No verification code has been requested for this email');
+    }
+
+    const now = Date.now();
+    if (now > cached.expiresAt) {
+      const diffSec = Math.round((now - cached.expiresAt) / 1000);
+      logger.warn(`OTP verification failed: Code expired ${diffSec} seconds ago for ${normalizedEmail}`);
+      emailOtpCache.delete(normalizedEmail);
+      throw new UnauthorizedError('Verification code has expired');
+    }
+
+    if (cached.otp.trim() !== normalizedCode) {
+      logger.warn(`OTP mismatch for ${normalizedEmail}. Expected: '${cached.otp}' (len ${cached.otp.length}), Received: '${normalizedCode}' (len ${normalizedCode.length})`);
+      throw new UnauthorizedError('Invalid verification code');
+    }
+
+    // Clear OTP after successful use
+    emailOtpCache.delete(normalizedEmail);
+
+    const db = request.server.db;
+    const ip = request.ip;
+    const userAgent = request.headers['user-agent'] || 'unknown';
+
+    // 1. Check if user exists
+    const userRes = await db.query('SELECT * FROM users WHERE username = $1', [normalizedEmail]);
+    let user = userRes.rows[0];
+
+    if (!user) {
+      // Register user automatically! Use a random password hash since they use OTP
+      const randomPassword = Helpers.hashPassword(Math.random().toString());
+      const userInsert = await db.query(
+        `INSERT INTO users (username, display_name, password_hash, status) 
+         VALUES ($1, $2, $3, 'ACTIVE') RETURNING *`,
+        [email.toLowerCase(), email.split('@')[0], await randomPassword]
+      );
+      user = userInsert.rows[0];
+    }
+
+    // 2. Check/insert device
+    const deviceRes = await db.query(
+      'SELECT * FROM devices WHERE user_id = $1 AND device_fingerprint = $2',
+      [user.id, device_fingerprint]
+    );
+    let device = deviceRes.rows[0];
+
+    if (!device) {
+      // Mark as trusted immediately since they successfully verified their email
+      const newDeviceRes = await db.query(
+        `INSERT INTO devices (user_id, device_name, device_fingerprint, platform, public_key, is_trusted, trusted_at)
+         VALUES ($1, $2, $3, $4, $5, TRUE, CURRENT_TIMESTAMP) RETURNING *`,
+        [user.id, device_name, device_fingerprint, platform, public_key || null]
+      );
+      device = newDeviceRes.rows[0];
+    } else {
+      // Update device info and keep it trusted
+      await db.query(
+        'UPDATE devices SET last_active = CURRENT_TIMESTAMP, device_name = $1, public_key = COALESCE($2, public_key), is_trusted = TRUE, trusted_at = COALESCE(trusted_at, CURRENT_TIMESTAMP) WHERE id = $3',
+        [device_name, public_key || null, device.id]
+      );
+      device.is_trusted = true; // Ensure local representation is true
+    }
+
+    // 3. Create session tokens
+    const { accessToken, refreshToken } = await AuthService.createSession(
+      db,
+      request.server,
+      user.id,
+      device.id,
+      ip,
+      userAgent
+    );
+
+    const { password_hash, totp_secret, ...safeUser } = user;
+
+    return reply.status(200).send({
+      message: 'Verification successful',
+      user: safeUser,
+      device,
+      tokens: { accessToken, refreshToken }
+    });
+  }
+
+  /**
+   * TEMPORARY debug endpoint. Validates admin credentials without device/session logic.
+   * Should be removed before production deployment.
+   */
+  public static async debugLogin(request: FastifyRequest<{ Body: { username: string; password: string } }>, reply: FastifyReply) {
+    const { username, password } = request.body;
+    const db = request.server.db;
+
+    const userRes = await db.query('SELECT username, password_hash, role, status FROM users WHERE username = $1', [username.toLowerCase()]);
+    const user = userRes.rows[0];
+
+    if (!user) {
+      return reply.status(200).send({ found: false, message: 'User not found in database' });
+    }
+
+    const passwordValid = await Helpers.comparePassword(password, user.password_hash);
+
+    return reply.status(200).send({
+      found: true,
+      username: user.username,
+      role: user.role,
+      status: user.status,
+      passwordValid,
+      hashPrefix: user.password_hash?.substring(0, 20) + '...',
     });
   }
 }

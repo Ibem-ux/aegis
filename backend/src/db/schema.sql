@@ -3,7 +3,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Enum Types
 CREATE TYPE user_status AS ENUM ('ACTIVE', 'SUSPENDED', 'PENDING');
-CREATE TYPE device_platform AS ENUM ('ANDROID', 'IOS', 'DESKTOP');
+CREATE TYPE device_platform AS ENUM ('ANDROID', 'IOS', 'DESKTOP', 'WEB');
 CREATE TYPE message_type AS ENUM ('TEXT', 'IMAGE', 'VIDEO', 'AUDIO', 'FILE', 'SYSTEM');
 CREATE TYPE message_delivery_status AS ENUM ('SENT', 'DELIVERED', 'READ');
 CREATE TYPE key_purpose AS ENUM ('DB_MESSAGE', 'MEDIA_DECRYPTION', 'BACKUP');

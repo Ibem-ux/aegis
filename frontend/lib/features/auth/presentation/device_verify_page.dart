@@ -46,7 +46,7 @@ class DeviceVerifyPage extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: AegisTheme.cardColor,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AegisTheme.accentBlue.withOpacity(0.2)),
+                      border: Border.all(color: AegisTheme.accentBlue.withValues(alpha: 0.2)),
                     ),
                     child: Column(
                       children: [

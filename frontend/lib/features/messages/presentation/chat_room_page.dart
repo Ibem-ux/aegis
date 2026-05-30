@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -89,11 +89,19 @@ class _ChatRoomPageState extends ConsumerState<ChatRoomPage> {
   }
 
   Future<void> _pickAndSendImage() async {
+    if (kIsWeb) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Image upload is not available on web')),
+        );
+      }
+      return;
+    }
+
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
     if (pickedFile == null) return;
 
-    final file = File(pickedFile.path);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Encrypting and uploading image...')),
@@ -103,7 +111,7 @@ class _ChatRoomPageState extends ConsumerState<ChatRoomPage> {
     try {
       await ref.read(messagesRepositoryProvider).sendMediaMessage(
             widget.chatId,
-            file,
+            pickedFile,
             'IMAGE',
           );
       // Sync room
@@ -210,7 +218,7 @@ class _ChatRoomPageState extends ConsumerState<ChatRoomPage> {
                   _formatTime(message.createdAt),
                   style: TextStyle(
                     fontSize: 10,
-                    color: Colors.white.withOpacity(0.6),
+                    color: Colors.white.withValues(alpha: 0.6),
                   ),
                 ),
                 if (isMe) ...[
@@ -242,10 +250,18 @@ class _ChatRoomPageState extends ConsumerState<ChatRoomPage> {
             const SizedBox(height: 8),
             TextButton.icon(
               onPressed: () async {
+                if (kIsWeb) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Media download is not available on web')),
+                    );
+                  }
+                  return;
+                }
                 // Parse key details (stored inside meta JSON content by sender)
                 try {
                   final meta = json.decode(message.content) as Map<String, dynamic>;
-                  final file = await ref.read(messagesRepositoryProvider).downloadAndDecryptMedia(
+                  final result = await ref.read(messagesRepositoryProvider).downloadAndDecryptMedia(
                         mediaId: message.mediaId!,
                         keyBase64: meta['file_key'] as String,
                         ivBase64: meta['file_iv'] as String,
@@ -253,10 +269,10 @@ class _ChatRoomPageState extends ConsumerState<ChatRoomPage> {
                       );
                   
                   if (mounted) {
-                    showDialog<void>(
+                    await showDialog<void>(
                       context: context,
                       builder: (_) => Dialog(
-                        child: Image.file(file),
+                        child: Image.memory(result as Uint8List),
                       ),
                     );
                   }
@@ -325,7 +341,7 @@ class _ChatRoomPageState extends ConsumerState<ChatRoomPage> {
         return Icon(
           Icons.access_time,
           size: 14,
-          color: Colors.white.withOpacity(0.5),
+          color: Colors.white.withValues(alpha: 0.5),
         );
       case 'SENT':
         return const Icon(

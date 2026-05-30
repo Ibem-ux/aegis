@@ -125,7 +125,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Claim Node Invite',
+                      'Join Aegis',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                             fontWeight: FontWeight.w800,
@@ -142,9 +142,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: AegisTheme.errorRed.withOpacity(0.1),
+                          color: AegisTheme.errorRed.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AegisTheme.errorRed.withOpacity(0.3)),
+                          border: Border.all(color: AegisTheme.errorRed.withValues(alpha: 0.3)),
                         ),
                         child: Text(
                           _errorMessage!,

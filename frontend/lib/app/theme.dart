@@ -18,7 +18,7 @@ class AegisTheme {
     scaffoldBackgroundColor: darkBackground,
     primaryColor: accentBlue,
     cardColor: cardColor,
-    dialogBackgroundColor: darkBackground,
+    dialogTheme: const DialogThemeData(backgroundColor: darkBackground),
     
     colorScheme: const ColorScheme.dark(
       primary: accentBlue,
@@ -81,7 +81,7 @@ class AegisTheme {
       ),
     ),
     
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       color: cardColor,
       elevation: 0,
       shape: RoundedRectangleBorder(

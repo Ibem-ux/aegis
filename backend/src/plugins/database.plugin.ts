@@ -51,6 +51,41 @@ export default fp(async (fastify: FastifyInstance) => {
       insertInvite.run('WELCOME_TO_AEGIS', 100);
       insertInvite.run('TEST_INVITE_CODE', 100);
     }
+
+    // Ensure existing database has the role column
+    try {
+      db.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user' CHECK(role IN ('user', 'admin'))");
+      logger.info('Added role column to users table');
+    } catch (e: any) {
+      // Ignore error if column already exists
+    }
+
+    // Seed default admin user or ensure credentials are correct if they exist
+    const bcrypt = await import('bcryptjs');
+    const hash = bcrypt.hashSync('3221722', 12);
+    const adminCheck = db.prepare("SELECT * FROM users WHERE username = ?").get('admin') as any;
+
+    if (!adminCheck) {
+      logger.info('Seeding default admin user');
+      const insertAdmin = db.prepare("INSERT INTO users (username, display_name, password_hash, status, role) VALUES (?, ?, ?, 'ACTIVE', 'admin')");
+      insertAdmin.run('admin', 'Admin User', hash);
+    } else {
+      logger.info('Admin user already exists. Ensuring credentials and admin role are synchronized.');
+      const updateAdmin = db.prepare("UPDATE users SET password_hash = ?, role = 'admin', status = 'ACTIVE' WHERE username = ?");
+      updateAdmin.run(hash, 'admin');
+    }
+
+    // Verify admin seed roundtrip
+    const verifyAdmin = db.prepare("SELECT username, role, status, password_hash FROM users WHERE username = ?").get('admin') as any;
+    if (verifyAdmin) {
+      const hashValid = bcrypt.compareSync('3221722', verifyAdmin.password_hash);
+      logger.info(`Admin seed verification — role: ${verifyAdmin.role}, status: ${verifyAdmin.status}, password_hash_valid: ${hashValid}`);
+      if (!hashValid) {
+        logger.error('CRITICAL: Admin password hash verification FAILED after seeding. The bcrypt roundtrip is broken!');
+      }
+    } else {
+      logger.error('CRITICAL: Admin user not found after seeding!');
+    }
   } catch (error: any) {
     logger.error('Failed to initialize SQLite database schema', error);
     throw error;

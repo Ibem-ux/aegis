@@ -9,7 +9,7 @@ export const registerSchema = {
       invite_code: { type: 'string' },
       device_name: { type: 'string', minLength: 1 },
       device_fingerprint: { type: 'string', minLength: 1 },
-      platform: { type: 'string', enum: ['ANDROID', 'IOS', 'DESKTOP'] },
+      platform: { type: 'string', enum: ['ANDROID', 'IOS', 'DESKTOP', 'WEB'] },
       public_key: { type: 'string' }
     }
   }
@@ -24,7 +24,7 @@ export const loginSchema = {
       password: { type: 'string' },
       device_name: { type: 'string', minLength: 1 },
       device_fingerprint: { type: 'string', minLength: 1 },
-      platform: { type: 'string', enum: ['ANDROID', 'IOS', 'DESKTOP'] },
+      platform: { type: 'string', enum: ['ANDROID', 'IOS', 'DESKTOP', 'WEB'] },
       public_key: { type: 'string' }
     }
   }
@@ -56,6 +56,21 @@ export const deviceApproveSchema = {
     required: ['device_id'],
     properties: {
       device_id: { type: 'string', format: 'uuid' }
+    }
+  }
+};
+
+export const verifyEmailOtpSchema = {
+  body: {
+    type: 'object',
+    required: ['email', 'code', 'device_name', 'device_fingerprint', 'platform'],
+    properties: {
+      email: { type: 'string' },
+      code: { type: 'string', minLength: 6, maxLength: 6 },
+      device_name: { type: 'string', minLength: 1 },
+      device_fingerprint: { type: 'string', minLength: 1 },
+      platform: { type: 'string', enum: ['ANDROID', 'IOS', 'DESKTOP', 'WEB'] },
+      public_key: { type: 'string' }
     }
   }
 };

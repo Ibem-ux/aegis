@@ -1,6 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:drift/drift.dart';
 import '../../../core/database/local_database.dart';
 import '../../../core/network/api_client.dart';
@@ -385,8 +384,12 @@ class MessagesRepository {
   }
 
   /// Encrypts and sends a media attachment (photo, video, voice note, document)
-  Future<void> sendMediaMessage(String chatId, File file, String type) async {
-    final bytes = await file.readAsBytes();
+  /// Not available on web platform.
+  Future<void> sendMediaMessage(String chatId, dynamic file, String type) async {
+    if (kIsWeb) {
+      throw UnsupportedError('Media upload is not supported on web');
+    }
+    final bytes = await file.readAsBytes() as Uint8List;
     
     // 1. Client-side encrypt file bytes
     final encryptionResult = await CryptoService.encryptFile(bytes);
@@ -395,12 +398,13 @@ class MessagesRepository {
     final fileIv = encryptionResult['iv'] as String;
 
     // 2. Request pre-signed upload URL from backend
-    final filename = file.path.split('/').last;
+    final filePath = file.path as String;
+    final filename = filePath.split('/').last;
     final uploadResponse = await _apiClient.dio.get<Map<String, dynamic>>(
       ApiEndpoints.mediaUpload,
       queryParameters: {
         'filename': filename,
-        'mime_type': _getMimeType(file.path, type),
+        'mime_type': _getMimeType(filePath, type),
         'file_size': encryptedFileBytes.length,
       },
     );
@@ -502,13 +506,18 @@ class MessagesRepository {
     }
   }
 
-  /// Downloads, decrypts, and saves an encrypted media file to local device path
-  Future<File> downloadAndDecryptMedia({
+  /// Downloads, decrypts, and saves an encrypted media file to local device path.
+  /// Not available on web platform.
+  Future<dynamic> downloadAndDecryptMedia({
     required String mediaId,
     required String keyBase64,
     required String ivBase64,
     required String filename,
   }) async {
+    if (kIsWeb) {
+      throw UnsupportedError('Media download is not supported on web');
+    }
+
     // 1. Get pre-signed download URL from backend
     final downloadUrlRes = await _apiClient.dio.get<Map<String, dynamic>>('${ApiEndpoints.mediaDownload}/$mediaId');
     final downloadDetails = downloadUrlRes.data!;
@@ -528,12 +537,7 @@ class MessagesRepository {
       ivBase64: ivBase64,
     );
 
-    // 4. Save file to app documents folder
-    final tempDir = await Directory.systemTemp.createTemp();
-    final localFile = File('${tempDir.path}/$filename');
-    await localFile.writeAsBytes(decryptedBytes);
-
-    return localFile;
+    return decryptedBytes;
   }
 
   String _getMimeType(String path, String type) {

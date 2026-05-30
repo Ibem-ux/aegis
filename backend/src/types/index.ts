@@ -1,5 +1,5 @@
 export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'PENDING';
-export type DevicePlatform = 'ANDROID' | 'IOS' | 'DESKTOP';
+export type DevicePlatform = 'ANDROID' | 'IOS' | 'DESKTOP' | 'WEB';
 export type MessageType = 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE' | 'SYSTEM';
 export type MessageDeliveryStatus = 'SENT' | 'DELIVERED' | 'READ';
 export type KeyPurpose = 'DB_MESSAGE' | 'MEDIA_DECRYPTION' | 'BACKUP';
@@ -14,6 +14,7 @@ export interface User {
   totp_secret: string | null;
   totp_enabled: boolean;
   status: UserStatus;
+  role: 'user' | 'admin';
   last_seen: Date;
   created_at: Date;
   updated_at: Date;

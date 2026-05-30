@@ -33,9 +33,9 @@ class ApiClient {
               // Queue other requests while refreshing
               _refreshQueue.add((newToken) {
                 requestOptions.headers['Authorization'] = 'Bearer $newToken';
-                dio.fetch(requestOptions).then(
+                dio.fetch<dynamic>(requestOptions).then(
                   (res) => handler.resolve(res),
-                  onError: (err) => handler.reject(err as DioException),
+                  onError: (Object err) => handler.reject(err as DioException),
                 );
               });
               return;

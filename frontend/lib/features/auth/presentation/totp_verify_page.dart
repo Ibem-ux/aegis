@@ -95,9 +95,9 @@ class _TotpVerifyPageState extends ConsumerState<TotpVerifyPage> {
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: AegisTheme.errorRed.withOpacity(0.1),
+                          color: AegisTheme.errorRed.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AegisTheme.errorRed.withOpacity(0.3)),
+                          border: Border.all(color: AegisTheme.errorRed.withValues(alpha: 0.3)),
                         ),
                         child: Text(
                           _errorMessage!,

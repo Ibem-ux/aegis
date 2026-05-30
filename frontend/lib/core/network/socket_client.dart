@@ -96,7 +96,7 @@ class SocketClient {
   }
 
   /// Sends a message with acknowledgement callback from server
-  void sendMessageWithAck(Map<String, dynamic> payload, Function(dynamic) ackCallback) {
+  void sendMessageWithAck(Map<String, dynamic> payload, void Function(dynamic) ackCallback) {
     if (isConnected) {
       _socket!.emitWithAck('message:send', payload, ack: ackCallback);
     }
@@ -130,7 +130,7 @@ class SocketClient {
   }
 
   /// Requests messages missed while offline, returns via ack callback
-  void requestSync(DateTime lastSeen, Function(dynamic) callback) {
+  void requestSync(DateTime lastSeen, void Function(dynamic) callback) {
     if (isConnected) {
       _socket!.emitWithAck('sync:request', {
         'last_sync_timestamp': lastSeen.toIso8601String(),

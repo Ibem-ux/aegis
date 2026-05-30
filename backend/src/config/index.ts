@@ -22,6 +22,12 @@ export const config = {
     jwtPublicKeyPath: process.env.JWT_PUBLIC_KEY_PATH || 'keys/public.pem',
     masterEncryptionKey: process.env.MASTER_ENCRYPTION_KEY || '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
     backupEncryptionKey: process.env.BACKUP_ENCRYPTION_KEY || '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+  },
+  email: {
+    smtpHost: process.env.SMTP_HOST || 'smtp.gmail.com',
+    smtpPort: parseInt(process.env.SMTP_PORT || '587', 10),
+    smtpUser: process.env.SMTP_USER || '',
+    smtpPass: process.env.SMTP_PASS || '',
   }
 };
 

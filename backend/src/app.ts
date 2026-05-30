@@ -89,7 +89,7 @@ export function buildApp(): FastifyInstance {
       });
     }
 
-    logger.error('Unhandled Server Error', error);
+    console.error('Unhandled Server Error', error);
     return reply.status(500).send({
       error: 'InternalServerError',
       message: 'An unexpected error occurred. Please contact the administrator.'

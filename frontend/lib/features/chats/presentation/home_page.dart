@@ -67,11 +67,11 @@ class _HomePageState extends ConsumerState<HomePage> {
 
                 try {
                   final chatId = await ref.read(chatsRepositoryProvider).startChat(username);
-                  if (mounted) {
-                    context.push('/chat/$chatId?name=$username');
+                  if (context.mounted) {
+                    await context.push('/chat/$chatId?name=$username');
                   }
                 } catch (e) {
-                  if (mounted) {
+                  if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(content: Text('Failed to start chat: $e')),
                     );
@@ -92,7 +92,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_currentIndex == 0 ? 'Aegis Chats' : 'Node Settings'),
+        title: Text(_currentIndex == 0 ? 'Aegis Chats' : 'Aegis Settings'),
         actions: _currentIndex == 0
             ? [
                 IconButton(
@@ -112,13 +112,13 @@ class _HomePageState extends ConsumerState<HomePage> {
                 }
                 return ListView.separated(
                   itemCount: chats.length,
-                  separatorBuilder: (_, __) => Divider(color: AegisTheme.cardColor.withOpacity(0.5), height: 1),
+                  separatorBuilder: (_, __) => Divider(color: AegisTheme.cardColor.withValues(alpha: 0.5), height: 1),
                   itemBuilder: (context, index) {
                     final chat = chats[index];
                     return ListTile(
-                      leading: CircleAvatar(
+                      leading: const CircleAvatar(
                         backgroundColor: AegisTheme.cardColor,
-                        child: const Icon(Icons.person, color: AegisTheme.accentCyan),
+                        child: Icon(Icons.person, color: AegisTheme.accentCyan),
                       ),
                       title: Text(chat.recipientDisplayName, style: const TextStyle(fontWeight: FontWeight.bold)),
                       subtitle: Text(
@@ -173,10 +173,10 @@ class _HomePageState extends ConsumerState<HomePage> {
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                CircleAvatar(
+                const CircleAvatar(
                   radius: 36,
                   backgroundColor: AegisTheme.darkBackground,
-                  child: const Icon(Icons.security, size: 40, color: AegisTheme.accentCyan),
+                  child: Icon(Icons.security, size: 40, color: AegisTheme.accentCyan),
                 ),
                 const SizedBox(height: 16),
                 Text(_myUsername, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
@@ -211,7 +211,7 @@ class _HomePageState extends ConsumerState<HomePage> {
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.logout, color: AegisTheme.errorRed),
-                title: const Text('Lock Node Session'),
+                title: const Text('Sign Out'),
                 subtitle: const Text('Logs out and clears session keys'),
                 onTap: () async {
                   await ref.read(apiClientProvider).dio.post<dynamic>(ApiEndpoints.logout);
