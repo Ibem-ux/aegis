@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -109,11 +110,11 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   void _showGenerateLinkDialog() async {
-    showDialog<void>(
+    unawaited(showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
+    ));
 
     try {
       final result = await ref.read(chatsRepositoryProvider).generateInviteLink(maxUses: 1); // Default to single use for now
@@ -122,7 +123,7 @@ class _HomePageState extends ConsumerState<HomePage> {
 
       final token = result['token'] as String;
 
-      showDialog<void>(
+      unawaited(showDialog<void>(
         context: context,
         builder: (context) {
           return AlertDialog(
@@ -156,7 +157,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             ],
           );
         },
-      );
+      ));
     } catch (e) {
       if (!mounted) return;
       Navigator.pop(context); // pop loading
@@ -191,11 +192,11 @@ class _HomePageState extends ConsumerState<HomePage> {
                 if (token.isEmpty) return;
                 
                 // Show loading
-                showDialog<void>(
+                unawaited(showDialog<void>(
                   context: context,
                   barrierDismissible: false,
                   builder: (ctx) => const Center(child: CircularProgressIndicator()),
-                );
+                ));
 
                 try {
                   final chatId = await ref.read(chatsRepositoryProvider).acceptInviteLink(token);

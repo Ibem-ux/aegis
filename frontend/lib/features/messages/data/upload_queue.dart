@@ -55,7 +55,6 @@ class UploadQueueManager {
     if (_initialized || kIsWeb) return;
     await Workmanager().initialize(
       callbackDispatcher,
-      isInDebugMode: kDebugMode,
     );
     _initialized = true;
   }

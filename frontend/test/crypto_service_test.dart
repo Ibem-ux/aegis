@@ -36,7 +36,7 @@ void main() {
       final alicePubBytes = await aliceKeyPair.extractPublicKey();
       final alicePrivBase64 = base64.encode(alicePrivBytes);
       final alicePubBase64 = base64.encode(alicePubBytes.bytes);
-      final aliceDeviceId = 'device-alice-1';
+      const aliceDeviceId = 'device-alice-1';
 
       // Bob KeyPair
       final bobKeyPair = await x25519.newKeyPair();
@@ -44,9 +44,9 @@ void main() {
       final bobPubBytes = await bobKeyPair.extractPublicKey();
       final bobPrivBase64 = base64.encode(bobPrivBytes);
       final bobPubBase64 = base64.encode(bobPubBytes.bytes);
-      final bobDeviceId = 'device-bob-1';
+      const bobDeviceId = 'device-bob-1';
 
-      final originalMessage = 'Hello Bob, this is a secret E2EE message!';
+      const originalMessage = 'Hello Bob, this is a secret E2EE message!';
 
       // Alice encrypts for Bob (and herself)
       final encryptedPayloadJson = await CryptoService.encryptPayload(

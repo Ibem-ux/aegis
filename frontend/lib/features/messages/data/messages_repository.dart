@@ -263,7 +263,7 @@ class MessagesRepository {
         );
       } catch (e) {
         // WARNING: Encryption failed — message will be sent in plaintext
-        print('[MessagesRepository] ⚠️ E2EE encryption failed, falling back to plaintext: $e');
+        debugPrint('[MessagesRepository] ⚠️ E2EE encryption failed, falling back to plaintext: $e');
       }
     }
 

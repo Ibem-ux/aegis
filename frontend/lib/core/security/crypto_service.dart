@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
+import 'package:flutter/foundation.dart';
 
 class CryptoService {
   static final _cipher = AesGcm.with256bits();
@@ -171,7 +171,7 @@ class CryptoService {
         };
       } catch (e) {
         // Log and continue — wrapping for remaining devices
-        print('[CryptoService] WARNING: Failed to wrap K_msg for device $deviceId: $e');
+        debugPrint('[CryptoService] WARNING: Failed to wrap K_msg for device $deviceId: $e');
       }
     }
     

@@ -39,7 +39,7 @@ dependencies:
   path_provider: ^2.1.3
   cached_network_image: ^3.3.1
   flutter_image_compress: ^2.3.0
-  workmanager: ^0.5.2
+  workmanager: ^0.9.0+3
 
   # Scanning & QRs
   mobile_scanner: ^7.2.0
