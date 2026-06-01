@@ -32,6 +32,10 @@ class ApiEndpoints {
   // Users
   static const String searchUsers = '/users/search';
   static const String me = '/users/me';
+  static const String passwordChange = '/users/password/change';
+  static const String recoveryGenerate = '/users/recovery/generate';
+  static const String recoveryRecover = '/users/recovery/recover';
+  static const String sessions = '/users/sessions';
 
   // Chats & Messages
   static const String chats = '/chats';

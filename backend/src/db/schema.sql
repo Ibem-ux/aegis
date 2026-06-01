@@ -19,9 +19,23 @@ CREATE TABLE users (
     totp_secret VARCHAR(128),
     totp_enabled BOOLEAN DEFAULT FALSE,
     status user_status DEFAULT 'ACTIVE',
+    role VARCHAR(20) DEFAULT 'user' CHECK(role IN ('user', 'admin')),
+    full_name VARCHAR(100),
+    email VARCHAR(100) UNIQUE,
+    phone VARCHAR(30),
+    recovery_key_hash VARCHAR(255),
+    password_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     last_seen TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 1.1 Password History Table
+CREATE TABLE IF NOT EXISTS password_history (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    password_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 2. Devices Table

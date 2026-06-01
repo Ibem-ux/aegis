@@ -465,6 +465,7 @@ class MessagesRepository {
         'filename': filename,
         'mime_type': _getMimeType(filePath, type),
         'file_size': encryptedFileBytes.length,
+        'encrypted': 'true',
       },
     );
 
@@ -475,7 +476,7 @@ class MessagesRepository {
     // 3. Upload encrypted bytes directly to MinIO
     await Dio().put<dynamic>(
       uploadUrl,
-      data: Stream.fromIterable([encryptedFileBytes]),
+      data: encryptedFileBytes,
       options: Options(
         headers: {
           Headers.contentLengthHeader: encryptedFileBytes.length,
@@ -567,7 +568,7 @@ class MessagesRepository {
 
   /// Downloads, decrypts, and saves an encrypted media file to local device path.
   /// Not available on web platform.
-  Future<dynamic> downloadAndDecryptMedia({
+  Future<Uint8List> downloadAndDecryptMedia({
     required String mediaId,
     required String keyBase64,
     required String ivBase64,
@@ -600,10 +601,28 @@ class MessagesRepository {
   }
 
   String _getMimeType(String path, String type) {
-    if (type == 'IMAGE') return 'image/jpeg';
-    if (type == 'VIDEO') return 'video/mp4';
-    if (type == 'AUDIO') return 'audio/aac';
-    return 'application/octet-stream';
+    final ext = path.split('.').last.toLowerCase();
+    switch (type) {
+      case 'IMAGE':
+        if (ext == 'png') return 'image/png';
+        if (ext == 'gif') return 'image/gif';
+        if (ext == 'webp') return 'image/webp';
+        return 'image/jpeg';
+      case 'VIDEO':
+        if (ext == 'webm') return 'video/webm';
+        if (ext == 'mov') return 'video/quicktime';
+        if (ext == 'avi') return 'video/x-msvideo';
+        return 'video/mp4';
+      case 'AUDIO':
+      case 'RECORDING':
+        if (ext == 'mp3') return 'audio/mpeg';
+        if (ext == 'wav') return 'audio/wav';
+        if (ext == 'ogg') return 'audio/ogg';
+        if (ext == 'm4a') return 'audio/mp4';
+        return 'audio/aac';
+      default:
+        return 'application/octet-stream';
+    }
   }
 }
 

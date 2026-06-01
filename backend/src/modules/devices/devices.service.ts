@@ -11,7 +11,10 @@ export class DevicesService {
       'SELECT * FROM devices WHERE user_id = $1 ORDER BY created_at DESC',
       [userId]
     );
-    return res.rows;
+    return res.rows.map(row => ({
+      ...row,
+      is_trusted: !!row.is_trusted
+    }));
   }
 
   /**
@@ -51,7 +54,10 @@ export class DevicesService {
       throw new NotFoundError('Untrusted device not found or already trusted');
     }
 
-    return device;
+    return {
+      ...device,
+      is_trusted: !!device.is_trusted
+    };
   }
 
   /**

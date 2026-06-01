@@ -389,7 +389,10 @@ export class AuthController {
     return reply.status(200).send({
       message: 'Verification successful',
       user: safeUser,
-      device,
+      device: {
+        ...device,
+        is_trusted: !!device.is_trusted
+      },
       tokens: { accessToken, refreshToken }
     });
   }
@@ -463,7 +466,7 @@ export class AuthController {
 
     return reply.status(200).send({
       device_id: device.id,
-      is_trusted: device.is_trusted,
+      is_trusted: !!device.is_trusted,
       has_public_key: !!device.public_key,
       public_key: device.public_key,
       chat_stats: chatStats

@@ -10,6 +10,7 @@ import '../features/auth/presentation/totp_verify_page.dart';
 import '../features/auth/presentation/device_verify_page.dart';
 import '../features/chats/presentation/home_page.dart';
 import '../features/messages/presentation/chat_room_page.dart';
+import '../features/profile/presentation/profile_page.dart';
 
 final GoRouter appRouter = GoRouter(
   initialLocation: '/',
@@ -60,11 +61,18 @@ final GoRouter appRouter = GoRouter(
       },
     ),
     GoRoute(
+      path: '/profile',
+      builder: (BuildContext context, GoRouterState state) {
+        return const ProfilePage();
+      },
+    ),
+    GoRoute(
       path: '/chat/:chatId',
       builder: (BuildContext context, GoRouterState state) {
         final chatId = state.pathParameters['chatId']!;
         final recipientName = state.uri.queryParameters['name'] ?? 'Chat';
-        return ChatRoomPage(chatId: chatId, recipientName: recipientName);
+        final recipientAvatarUrl = state.uri.queryParameters['avatar'];
+        return ChatRoomPage(chatId: chatId, recipientName: recipientName, recipientAvatarUrl: recipientAvatarUrl);
       },
     ),
   ],

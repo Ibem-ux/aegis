@@ -9,12 +9,17 @@ export interface User {
   id: string;
   username: string;
   display_name: string | null;
+  full_name: string | null;
   avatar_url: string | null;
+  email: string | null;
+  phone: string | null;
   password_hash: string;
   totp_secret: string | null;
   totp_enabled: boolean;
   status: UserStatus;
   role: 'user' | 'admin';
+  recovery_key_hash: string | null;
+  password_updated_at: Date;
   last_seen: Date;
   created_at: Date;
   updated_at: Date;

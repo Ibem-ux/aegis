@@ -9,13 +9,7 @@ import { logger } from '../utils/logger';
 
 declare module 'fastify' {
   interface FastifyInstance {
-    db: {
-      query<T = any>(sql: string, params?: any[]): Promise<{ rows: T[]; rowCount: number }>;
-      connect(): Promise<{
-        query<T = any>(sql: string, params?: any[]): Promise<{ rows: T[]; rowCount: number }>;
-        release(): void;
-      }>;
-    };
+    db: import('pg').Pool;
   }
 }
 
@@ -56,12 +50,30 @@ async function initSqlite(fastify: FastifyInstance) {
       insertInvite.run('TEST_INVITE_CODE', 100);
     }
 
-    // Ensure existing database has the role column
+    // Ensure existing SQLite database has all necessary columns
+    const sqliteColumns = [
+      "full_name TEXT",
+      "email TEXT", // SQLite doesn't support adding UNIQUE columns via ALTER TABLE
+      "phone TEXT",
+      "recovery_key_hash TEXT",
+      "password_updated_at TIMESTAMP" // SQLite ALTER TABLE ADD COLUMN does not support dynamic defaults like DEFAULT CURRENT_TIMESTAMP
+    ];
+    for (const col of sqliteColumns) {
+      try {
+        const colName = col.split(' ')[0];
+        db.exec(`ALTER TABLE users ADD COLUMN ${col}`);
+        logger.info(`Added ${colName} column to SQLite users table`);
+      } catch (e: any) {
+        // Ignore error if column already exists
+      }
+    }
+
+    // Add unique index for email separately
     try {
-      db.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user' CHECK(role IN ('user', 'admin'))");
-      logger.info('Added role column to users table');
+      db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL');
+      logger.info('Ensured unique index on users.email exists');
     } catch (e: any) {
-      // Ignore error if column already exists
+      logger.warn(`Failed to create unique index for email: ${e.message}`);
     }
 
     // Seed default admin user or ensure credentials are correct if they exist
@@ -211,11 +223,35 @@ async function initPostgres(fastify: FastifyInstance) {
       logger.info('PostgreSQL schema already exists — skipping migration');
     }
 
-    // Ensure role column exists (for databases migrated from older schemas)
+    // Ensure existing Postgres database has all necessary columns
+    const pgColumns = [
+      "full_name VARCHAR(100)",
+      "email VARCHAR(100) UNIQUE",
+      "phone VARCHAR(30)",
+      "recovery_key_hash VARCHAR(255)",
+      "password_updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP"
+    ];
+    for (const col of pgColumns) {
+      try {
+        const colName = col.split(' ')[0];
+        await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${colName} ${col.substring(colName.length)}`);
+      } catch (e: any) {
+        // Ignore if column already exists
+      }
+    }
+
+    // Ensure password_history table exists
     try {
-      await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user' CHECK(role IN ('user', 'admin'))");
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS password_history (
+          id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+          user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          password_hash VARCHAR(255) NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
     } catch (e: any) {
-      // Ignore if column/constraint already exists
+      logger.error('Error creating password_history table', e);
     }
 
     // Ensure device_fingerprint unique constraint is per-user rather than global

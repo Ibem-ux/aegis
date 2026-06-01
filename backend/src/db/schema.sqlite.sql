@@ -21,9 +21,29 @@ CREATE TABLE IF NOT EXISTS users (
     totp_enabled INTEGER DEFAULT 0 CHECK(totp_enabled IN (0, 1)),
     status TEXT DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE', 'SUSPENDED', 'PENDING')),
     role TEXT DEFAULT 'user' CHECK(role IN ('user', 'admin')),
+    full_name TEXT,
+    email TEXT UNIQUE,
+    phone TEXT,
+    recovery_key_hash TEXT,
+    password_updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 1.1 Password History Table
+CREATE TABLE IF NOT EXISTS password_history (
+    id TEXT PRIMARY KEY DEFAULT (
+        lower(hex(randomblob(4))) || '-' || 
+        lower(hex(randomblob(2))) || '-4' || 
+        substr(lower(hex(randomblob(2))),2) || '-' || 
+        substr('89ab', abs(random()) % 4 + 1, 1) || 
+        substr(lower(hex(randomblob(2))),2) || '-' || 
+        lower(hex(randomblob(6)))
+    ),
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    password_hash TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 2. Devices Table

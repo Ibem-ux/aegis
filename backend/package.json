@@ -21,6 +21,7 @@
     "dotenv": "^16.4.5",
     "fastify": "^4.26.2",
     "fastify-plugin": "^4.5.1",
+    "file-type": "^16.5.4",
     "ioredis": "^5.11.0",
     "nodemailer": "^8.0.10",
     "otplib": "^12.0.1",
@@ -28,6 +29,7 @@
     "pino": "^8.19.0",
     "pino-pretty": "^10.3.1",
     "qrcode": "^1.5.3",
+    "sharp": "^0.34.5",
     "socket.io": "^4.7.5",
     "uuid": "^9.0.1"
   },

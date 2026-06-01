@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'chats_providers.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../messages/presentation/messages_providers.dart';
@@ -251,10 +252,19 @@ class _HomePageState extends ConsumerState<HomePage> {
                   separatorBuilder: (_, __) => Divider(color: AegisTheme.cardColor.withValues(alpha: 0.5), height: 1),
                   itemBuilder: (context, index) {
                     final chat = chats[index];
+                    final hasAvatar = chat.recipientAvatarUrl != null && chat.recipientAvatarUrl!.isNotEmpty;
+                    final initial = chat.recipientDisplayName.isNotEmpty
+                        ? chat.recipientDisplayName[0].toUpperCase()
+                        : '?';
                     return ListTile(
-                      leading: const CircleAvatar(
+                      leading: CircleAvatar(
                         backgroundColor: AegisTheme.cardColor,
-                        child: Icon(Icons.person, color: AegisTheme.accentCyan),
+                        backgroundImage: hasAvatar
+                            ? CachedNetworkImageProvider(chat.recipientAvatarUrl!)
+                            : null,
+                        child: hasAvatar
+                            ? null
+                            : Text(initial, style: const TextStyle(color: AegisTheme.accentCyan, fontWeight: FontWeight.bold)),
                       ),
                       title: Text(chat.recipientDisplayName, style: const TextStyle(fontWeight: FontWeight.bold)),
                       subtitle: Text(
@@ -268,7 +278,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                         style: const TextStyle(fontSize: 12, color: AegisTheme.textSecondary),
                       ),
                       onTap: () {
-                        context.push('/chat/${chat.id}?name=${chat.recipientDisplayName}');
+                        final avatarParam = hasAvatar ? '&avatar=${Uri.encodeComponent(chat.recipientAvatarUrl!)}' : '';
+                        context.push('/chat/${chat.id}?name=${Uri.encodeComponent(chat.recipientDisplayName)}$avatarParam');
                       },
                     );
                   },
@@ -304,20 +315,30 @@ class _HomePageState extends ConsumerState<HomePage> {
     return ListView(
       padding: const EdgeInsets.all(24.0),
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                const CircleAvatar(
-                  radius: 36,
-                  backgroundColor: AegisTheme.darkBackground,
-                  child: Icon(Icons.security, size: 40, color: AegisTheme.accentCyan),
-                ),
-                const SizedBox(height: 16),
-                Text(_myUsername, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                const Text('Secure Profile', style: TextStyle(color: AegisTheme.textSecondary)),
-              ],
+        GestureDetector(
+          onTap: () => context.push('/profile'),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  const CircleAvatar(
+                    radius: 36,
+                    backgroundColor: AegisTheme.darkBackground,
+                    child: Icon(Icons.security, size: 40, color: AegisTheme.accentCyan),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(_myUsername, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text('Secure Profile Dashboard', style: TextStyle(color: AegisTheme.accentCyan, fontSize: 13, fontWeight: FontWeight.w500)),
+                      SizedBox(width: 4),
+                      Icon(Icons.open_in_new, size: 14, color: AegisTheme.accentCyan),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),

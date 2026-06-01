@@ -57,7 +57,7 @@ export class ChatsService {
         updated_at: row.updated_at,
         last_message_at: row.last_message_at,
         last_message_preview: lastMessage,
-        archived: row.archived,
+        archived: row.archived === 1 || row.archived === true,
         recipient: {
           id: row.recipient_id,
           username: row.recipient_username,
@@ -199,7 +199,10 @@ export class ChatsService {
        ORDER BY created_at DESC`,
       [userId]
     );
-    return result.rows;
+    return result.rows.map((row) => ({
+      ...row,
+      is_active: row.is_active === 1 || row.is_active === true,
+    }));
   }
 
   /**
@@ -253,6 +256,7 @@ export class ChatsService {
     token: string
   ): Promise<{ chat_id: string; isNew: boolean; creator_id: string; creator_keys: any[] }> {
     const client = await db.connect();
+    let invite: any;
     try {
       await client.query('BEGIN');
       
@@ -267,9 +271,10 @@ export class ChatsService {
         throw new NotFoundError('Invalid invite link');
       }
 
-      const invite = inviteRes.rows[0];
+      invite = inviteRes.rows[0];
 
-      if (!invite.is_active) {
+      const isActive = invite.is_active === 1 || invite.is_active === true;
+      if (!isActive) {
         throw new BadRequestError('Invite link is no longer active');
       }
       if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
@@ -291,36 +296,31 @@ export class ChatsService {
         [invite.id]
       );
 
-      // 3. Create or get chat (using existing logic but modified for transaction if needed)
-      // We can just call createOrGetChat, but it uses its own transaction or query, which is fine
-      // However, to keep it clean, we'll do the logic here if needed, or commit and then call createOrGetChat.
-      // Let's commit the invite usage first to ensure it's recorded even if chat creation somehow fails or succeeds.
       await client.query('COMMIT');
-      client.release();
-
-      // Proceed to create/get chat using the normal method
-      const chatResult = await this.createOrGetChat(db, claimerId, invite.creator_id);
-
-      // 4. Fetch the creator's E2EE public keys to return to the claimer
-      const keysRes = await db.query(
-        `SELECT id AS device_id, public_key
-         FROM devices
-         WHERE user_id = $1 AND is_trusted = TRUE AND public_key IS NOT NULL`,
-        [invite.creator_id]
-      );
-
-      return {
-        chat_id: chatResult.chat_id,
-        isNew: chatResult.isNew,
-        creator_id: invite.creator_id,
-        creator_keys: keysRes.rows,
-      };
-
     } catch (error) {
       await client.query('ROLLBACK');
-      client.release();
       throw error;
+    } finally {
+      client.release();
     }
+
+    // Proceed to create/get chat using the normal method (outside transaction block)
+    const chatResult = await this.createOrGetChat(db, claimerId, invite.creator_id);
+
+    // 4. Fetch the creator's E2EE public keys to return to the claimer
+    const keysRes = await db.query(
+      `SELECT id AS device_id, public_key
+       FROM devices
+       WHERE user_id = $1 AND is_trusted = TRUE AND public_key IS NOT NULL`,
+      [invite.creator_id]
+    );
+
+    return {
+      chat_id: chatResult.chat_id,
+      isNew: chatResult.isNew,
+      creator_id: invite.creator_id,
+      creator_keys: keysRes.rows,
+    };
   }
 }
 

@@ -93,7 +93,13 @@ export class AuthService {
 
       // Strip sensitive password field
       const { password_hash, totp_secret, ...safeUser } = user;
-      return { user: safeUser, device };
+      return {
+        user: safeUser,
+        device: {
+          ...device,
+          is_trusted: !!device.is_trusted
+        }
+      };
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -189,7 +195,14 @@ export class AuthService {
       [user.username, payload.ip, 1, payload.device_fingerprint]
     );
 
-    return { user, device, requiresTrust };
+    return {
+      user,
+      device: {
+        ...device,
+        is_trusted: !!device.is_trusted
+      },
+      requiresTrust
+    };
   }
 
   /**

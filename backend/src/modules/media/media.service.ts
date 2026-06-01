@@ -11,14 +11,17 @@ export class MediaService {
     host: string,
     db: Pool,
     uploaderId: string,
-    payload: { filename: string; mime_type: string; file_size: number }
+    payload: { filename: string; mime_type: string; file_size: number; encrypted?: boolean }
   ): Promise<{ uploadUrl: string; mediaId: string }> {
     const fileId = uuidv4();
     const extension = payload.filename.split('.').pop();
     const storageKey = `${uploaderId}/${fileId}${extension ? `.${extension}` : ''}`;
 
     // Construct local PUT endpoint URL
-    const uploadUrl = `http://${host}/api/v1/media/upload-file/${storageKey}`;
+    let uploadUrl = `http://${host}/api/media/upload-file/${storageKey}`;
+    if (payload.encrypted) {
+      uploadUrl += '?encrypted=true';
+    }
 
     // Save media metadata in DB
     const res = await db.query<Media>(
