@@ -3,6 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /usr/src/app
 
+# Install build tools required for native C++ compilation (better-sqlite3, sharp, etc.)
+RUN apk add --no-cache python3 make g++ gcc
+
 COPY package*.json ./
 COPY tsconfig.json ./
 
@@ -11,6 +14,9 @@ RUN npm ci
 COPY src ./src
 
 RUN npm run build
+
+# Remove devDependencies to keep the production node_modules small
+RUN npm prune --production
 
 # Production stage
 FROM node:20-alpine
@@ -22,12 +28,13 @@ RUN apk add --no-cache postgresql-client openssl
 
 COPY package*.json ./
 
-RUN npm ci --only=production
-
+# Copy compiled files and pruned node_modules from the builder stage
 COPY --from=builder /usr/src/app/dist ./dist
+COPY --from=builder /usr/src/app/node_modules ./node_modules
 
-# Copy the entrypoint script that auto-generates JWT keys if missing
+# Copy the entrypoint script and convert line endings from CRLF (Windows) to LF (Linux)
 COPY docker-entrypoint.sh ./
+RUN sed -i 's/\r$//' docker-entrypoint.sh
 RUN chmod +x docker-entrypoint.sh
 
 # Create directories for persistent data
