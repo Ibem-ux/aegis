@@ -71,13 +71,6 @@ jobs:
             --dart-define=API_URL=${{ secrets.API_URL }} \
             --dart-define=WS_URL=${{ secrets.WS_URL }}
 
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy frontend/build/web --project-name=aegis
-
       - name: Build Android APK (release)
         working-directory: frontend
         run: |
