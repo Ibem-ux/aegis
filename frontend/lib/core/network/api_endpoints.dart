@@ -1,7 +1,13 @@
 import 'package:flutter/foundation.dart';
 
 class ApiEndpoints {
+  /// Production API URL override via --dart-define=API_URL=https://your-api.onrender.com
+  /// Falls back to localhost for development.
+  static const String _apiUrlOverride = String.fromEnvironment('API_URL');
+  static const String _wsUrlOverride = String.fromEnvironment('WS_URL');
+
   /// Resolves the correct backend host for each platform:
+  /// - If API_URL is set via --dart-define, uses that directly
   /// - Android Emulator uses 10.0.2.2 (special loopback alias)
   /// - All other platforms (Windows, iOS, macOS, Linux, Web) use localhost
   static String get host {
@@ -11,8 +17,25 @@ class ApiEndpoints {
     return 'localhost:3000';
   }
 
-  static String get baseUrl => 'http://$host/api';
-  static String get wsUrl => 'http://$host';
+  static String get baseUrl {
+    if (_apiUrlOverride.isNotEmpty) {
+      // Production: use the full URL from --dart-define (e.g. https://aegis-api.onrender.com/api)
+      final url = _apiUrlOverride.endsWith('/api') ? _apiUrlOverride : '$_apiUrlOverride/api';
+      return url;
+    }
+    return 'http://$host/api';
+  }
+
+  static String get wsUrl {
+    if (_wsUrlOverride.isNotEmpty) {
+      return _wsUrlOverride;
+    }
+    if (_apiUrlOverride.isNotEmpty) {
+      // Derive WS URL from API URL (strip /api suffix if present)
+      return _apiUrlOverride.replaceAll(RegExp(r'/api$'), '');
+    }
+    return 'http://$host';
+  }
 
   // Auth Endpoints
   static const String register = '/auth/register';

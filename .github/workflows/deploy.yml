@@ -1,0 +1,97 @@
+name: Deploy Aegis
+
+on:
+  push:
+    branches: [main]
+
+# Cancel any in-progress runs for the same branch
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Job 1: Backend — Type Check & Lint
+  # Render auto-deploys the Docker image on push,
+  # so this job just validates the code compiles.
+  # ──────────────────────────────────────────────
+  backend-check:
+    name: Backend — Type Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+  # ──────────────────────────────────────────────
+  # Job 2: Frontend — Build Flutter Web & Deploy
+  #         to Cloudflare Pages
+  # ──────────────────────────────────────────────
+  frontend-deploy:
+    name: Frontend — Build & Deploy
+    runs-on: ubuntu-latest
+    needs: backend-check  # Only deploy if backend compiles cleanly
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.0'
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: flutter pub get
+
+      - name: Build Flutter Web (release)
+        working-directory: frontend
+        run: |
+          flutter build web --release \
+            --dart-define=API_URL=${{ secrets.API_URL }} \
+            --dart-define=WS_URL=${{ secrets.WS_URL }}
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy frontend/build/web --project-name=aegis
+
+      - name: Build Android APK (release)
+        working-directory: frontend
+        run: |
+          flutter build apk --release \
+            --dart-define=API_URL=${{ secrets.API_URL }} \
+            --dart-define=WS_URL=${{ secrets.WS_URL }}
+
+      - name: Create GitHub Release and Upload APK
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v1.0.0+${{ github.run_number }}
+          name: Release v1.0.0+${{ github.run_number }}
+          draft: false
+          prerelease: false
+          files: frontend/build/app/outputs/flutter-apk/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
