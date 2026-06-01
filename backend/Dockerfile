@@ -14,6 +14,7 @@ RUN npm ci
 COPY src ./src
 
 RUN npm run build
+RUN cp -r src/db dist/db
 
 # Remove devDependencies to keep the production node_modules small
 RUN npm prune --production
