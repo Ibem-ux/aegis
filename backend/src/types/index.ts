@@ -1,7 +1,6 @@
 export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'PENDING';
 export type DevicePlatform = 'ANDROID' | 'IOS' | 'DESKTOP' | 'WEB';
-export type MessageType = 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE' | 'SYSTEM';
-export type MessageDeliveryStatus = 'SENT' | 'DELIVERED' | 'READ';
+export type MessageDeliveryStatus = 'SENT' | 'DELIVERED';
 export type KeyPurpose = 'DB_MESSAGE' | 'MEDIA_DECRYPTION' | 'BACKUP';
 export type BackupStatus = 'STARTED' | 'COMPLETED' | 'FAILED';
 
@@ -68,9 +67,6 @@ export interface Chat {
   created_at: Date;
   updated_at: Date;
   last_message_at: Date;
-  last_message_preview: Buffer | null;
-  last_message_iv: Buffer | null;
-  last_message_tag: Buffer | null;
 }
 
 export interface ChatParticipant {
@@ -92,28 +88,6 @@ export interface Media {
   thumbnail_key: string | null;
   checksum: string | null;
   created_at: Date;
-}
-
-export interface Message {
-  id: string;
-  chat_id: string;
-  sender_id: string | null;
-  encrypted_content: Buffer;
-  content_iv: Buffer;
-  content_tag: Buffer;
-  message_type: MessageType;
-  reply_to_id: string | null;
-  media_id: string | null;
-  created_at: Date;
-  edited_at: Date | null;
-  deleted_at: Date | null;
-}
-
-export interface MessageStatus {
-  message_id: string;
-  user_id: string;
-  status: MessageDeliveryStatus;
-  status_changed_at: Date;
 }
 
 export interface EncryptionKey {

@@ -64,7 +64,6 @@ class ApiEndpoints {
   static const String chats = '/chats';
   static const String chatInvites = '/chats/invites';
   static const String acceptInvite = '/chats/invites/accept';
-  static const String messages = '/messages';
 
   // Media
   static const String mediaUpload = '/media/upload';
