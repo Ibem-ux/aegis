@@ -16,6 +16,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:dio/dio.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../auth/presentation/auth_providers.dart';
+import '../../../core/security/diagnostics_page.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -682,7 +683,19 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                         textAlign: TextAlign.center,
                       ),
                     ),
-                    const SizedBox(width: 48), // Balancing back button
+                    if (kDebugMode)
+                      IconButton(
+                        icon: const Icon(Icons.bug_report, color: Colors.red),
+                        onPressed: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => const DiagnosticsPage(),
+                            ),
+                          );
+                        },
+                      )
+                    else
+                      const SizedBox(width: 48), // Balancing back button
                   ],
                 ),
               ),

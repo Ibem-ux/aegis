@@ -43,6 +43,13 @@ class CaptureGuardPlugin(private val activity: Activity) : MethodChannel.MethodC
                 // Android blocks capture via FLAG_SECURE, returning false as requested
                 result.success(false)
             }
+            "isSecureModeEnabled" -> {
+                activity.runOnUiThread {
+                    val flags = activity.window.attributes.flags
+                    val isSecure = (flags and WindowManager.LayoutParams.FLAG_SECURE) != 0
+                    result.success(isSecure)
+                }
+            }
             else -> result.notImplemented()
         }
     }

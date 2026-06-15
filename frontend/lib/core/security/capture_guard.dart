@@ -41,4 +41,13 @@ class CaptureGuard {
       return false;
     }
   }
+  Future<bool> isSecureModeEnabled() async {
+    try {
+      final result = await _methodChannel.invokeMethod<bool>('isSecureModeEnabled');
+      return result ?? false;
+    } catch (e) {
+      debugPrint('Failed to check secure mode status: $e');
+      return false;
+    }
+  }
 }
