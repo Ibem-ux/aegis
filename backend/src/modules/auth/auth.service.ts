@@ -2,6 +2,7 @@ import { Pool, PoolClient } from 'pg';
 import { Helpers } from '../../utils/helpers';
 import { EncryptionService } from '../../services/encryption.service';
 import { TokenService } from '../../services/token.service';
+import { hasCapability } from '../../utils/capabilities';
 import { 
   BadRequestError, 
   ConflictError, 
@@ -169,7 +170,7 @@ export class AuthService {
       // Check if this is the very first device for this user
       const deviceCountRes = await db.query('SELECT COUNT(*) as count FROM devices WHERE user_id = $1', [user.id]);
       const isFirstDevice = Number(deviceCountRes.rows[0].count) === 0;
-      const isTrusted = isFirstDevice || user.role === 'admin';
+      const isTrusted = isFirstDevice || hasCapability(user.role, 'AUTO_TRUST_DEVICE');
 
       // Create new device
       const newDeviceRes = await db.query<Device>(
