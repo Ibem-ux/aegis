@@ -52,9 +52,9 @@ class CryptoService {
     required String keyBase64,
     required String ivBase64,
   }) async {
-    // 1. Parse Key and IV
-    final keyBytes = base64Url.decode(keyBase64);
-    final ivBytes = base64Url.decode(ivBase64);
+    // 1. Parse Key and IV (robustly handle both standard and url-safe base64)
+    final keyBytes = base64.decode(base64.normalize(keyBase64));
+    final ivBytes = base64.decode(base64.normalize(ivBase64));
     final secretKey = SecretKey(keyBytes);
 
     // 2. Split ciphertext and MAC tag (last 16 bytes is standard GCM MAC)
