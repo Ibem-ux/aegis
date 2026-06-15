@@ -7,6 +7,7 @@ import '../../../core/network/api_endpoints.dart';
 import '../../../core/network/socket_client.dart';
 import '../../../core/security/crypto_service.dart';
 import '../../../core/secure_storage/secure_storage.dart';
+import '../../../core/network/envelope.dart';
 import 'package:uuid/uuid.dart';
 import 'package:dio/dio.dart';
 
@@ -27,43 +28,57 @@ class MessagesRepository {
     // Listen to incoming real-time messages and insert into local SQLite
     _socketClient.messageStream.listen((data) async {
       try {
-        final chatId = data['chat_id'] as String;
-        final sender = data['sender'] as Map<String, dynamic>;
+        final envelope = EncryptedEnvelope.fromJson(data);
         
         // Ensure the chat exists in local DB (FK constraint)
         final existingChat = await (_db.select(_db.localChats)
-              ..where((t) => t.id.equals(chatId)))
+              ..where((t) => t.id.equals(envelope.chatId)))
             .getSingleOrNull();
             
         if (existingChat == null) {
-          await _syncSingleChat(chatId, data);
+          // Fallback: create a dummy chat to satisfy FK constraint if we receive a message
+          // before the chat metadata syncs.
+          await _db.into(_db.localChats).insert(
+            LocalChatsCompanion.insert(
+              id: envelope.chatId,
+              recipientId: envelope.senderDeviceId, // Using device ID as placeholder
+              recipientUsername: 'Unknown',
+              recipientDisplayName: 'Unknown',
+              lastMessageAt: DateTime.parse(envelope.sentAt),
+            ),
+            mode: InsertMode.insertOrIgnore,
+          );
         }
 
-        final rawContent = data['content'] as String;
-        final decryptedContent = await decryptMessageContent(chatId, rawContent, data['message_type'] as String);
+        final rawContent = _envelopeToCryptoPayload(envelope);
+        final decryptedContent = await decryptMessageContent(envelope.chatId, rawContent, envelope.type.value);
         
         await _db.into(_db.localMessages).insert(
           LocalMessagesCompanion.insert(
-            id: data['id'] as String,
-            chatId: chatId,
-            senderId: sender['id'] as String,
+            id: envelope.messageId,
+            chatId: envelope.chatId,
+            senderId: envelope.senderDeviceId,
             content: decryptedContent,
-            messageType: data['message_type'] as String,
-            mediaId: Value(data['media_id'] as String?),
-            replyToId: Value(data['reply_to_id'] as String?),
-            createdAt: DateTime.parse(data['created_at'] as String),
+            messageType: envelope.type.value,
+            createdAt: DateTime.parse(envelope.sentAt),
             syncStatus: 'SYNCED',
           ),
-          mode: InsertMode.insertOrReplace,
+          mode: InsertMode.insertOrIgnore,
         );
 
         // Update chat preview for real-time home page updates
         await (_db.update(_db.localChats)
-              ..where((t) => t.id.equals(chatId)))
+              ..where((t) => t.id.equals(envelope.chatId)))
             .write(LocalChatsCompanion(
-              lastMessageAt: Value(DateTime.parse(data['created_at'] as String)),
+              lastMessageAt: Value(DateTime.parse(envelope.sentAt)),
               lastMessagePreview: Value(decryptedContent),
             ));
+            
+        // Emit message:ack to drop the queued copy on the relay
+        final myDeviceId = await _secureStorage.getDeviceId();
+        if (myDeviceId != null) {
+          _socketClient.sendAck(envelope.messageId, myDeviceId);
+        }
       } catch (e) {
         debugPrint('Error inserting real-time message: $e');
       }
@@ -84,22 +99,9 @@ class MessagesRepository {
       }
     });
 
-    // Listen to legacy read ack for backwards compat
-    _socketClient.readAckStream.listen((data) async {
-      try {
-        final messageId = data['message_id'] as String;
-        await (_db.update(_db.localMessages)
-              ..where((t) => t.id.equals(messageId)))
-            .write(const LocalMessagesCompanion(syncStatus: Value('READ')));
-      } catch (e) {
-        // Silently handle
-      }
-    });
-
     // Hook reconnection callback for offline sync
     _socketClient.onConnectCallback = () {
       syncOfflineQueue();
-      requestSyncSinceLastMessage();
     };
   }
 
@@ -113,44 +115,7 @@ class MessagesRepository {
         .watch();
   }
 
-  /// Syncs chat messages history from REST API
-  Future<void> syncMessagesFromApi(String chatId) async {
-    final response = await _apiClient.dio.get<List<dynamic>>('${ApiEndpoints.messages}/$chatId');
-    final data = response.data!;
 
-    final List<Map<String, dynamic>> decryptedMsgs = [];
-    for (final item in data) {
-      final msg = item as Map<String, dynamic>;
-      final rawContent = msg['content'] as String;
-      final decryptedContent = await decryptMessageContent(chatId, rawContent, msg['message_type'] as String);
-      decryptedMsgs.add({
-        ...msg,
-        'decrypted_content': decryptedContent,
-      });
-    }
-
-    await _db.batch((batch) {
-      for (final msg in decryptedMsgs) {
-        final sender = msg['sender'] as Map<String, dynamic>;
-
-        batch.insert(
-          _db.localMessages,
-          LocalMessagesCompanion.insert(
-            id: msg['id'] as String,
-            chatId: msg['chat_id'] as String,
-            senderId: sender['id'] as String,
-            content: msg['decrypted_content'] as String,
-            messageType: msg['message_type'] as String,
-            mediaId: Value(msg['media_id'] as String?),
-            replyToId: Value(msg['reply_to_id'] as String?),
-            createdAt: DateTime.parse(msg['created_at'] as String),
-            syncStatus: 'SYNCED',
-          ),
-          mode: InsertMode.insertOrReplace,
-        );
-      }
-    });
-  }
 
   /// Fetches participant public keys from server and populates cache
   Future<void> loadChatKeys(String chatId) async {
@@ -267,14 +232,18 @@ class MessagesRepository {
       }
     }
 
+    final envelope = _cryptoPayloadToEnvelope(
+      messageId: messageId,
+      chatId: chatId,
+      senderDeviceId: myDeviceId,
+      type: MessageType.text,
+      payloadJson: payloadToSend,
+    );
+    final envelopeJson = envelope.toJson();
+
     // 3. Transmit via WebSockets with acknowledgement
     if (_socketClient.isConnected) {
-      _socketClient.sendMessageWithAck({
-        'id': messageId,
-        'chat_id': chatId,
-        'content': payloadToSend,
-        'message_type': 'TEXT',
-      }, (ack) async {
+      _socketClient.sendMessageWithAck(envelopeJson, (ack) async {
         if (ack is Map<String, dynamic> && ack['success'] == true) {
           // Server confirmed persistence — mark as SENT
           await (_db.update(_db.localMessages)
@@ -287,12 +256,7 @@ class MessagesRepository {
       await _db.into(_db.syncQueue).insert(
             SyncQueueCompanion.insert(
               actionType: 'SEND_MESSAGE',
-              payload: json.encode({
-                'id': messageId,
-                'chat_id': chatId,
-                'content': payloadToSend,
-                'message_type': 'TEXT',
-              }),
+              payload: json.encode(envelopeJson),
             ),
           );
     }
@@ -311,7 +275,7 @@ class MessagesRepository {
         if (item.actionType == 'SEND_MESSAGE') {
           _socketClient.sendMessageWithAck(payload, (ack) async {
             if (ack is Map<String, dynamic> && ack['success'] == true) {
-              final msgId = payload['id'] as String?;
+              final msgId = payload['messageId'] as String?;
               if (msgId != null) {
                 await (_db.update(_db.localMessages)
                       ..where((t) => t.id.equals(msgId)))
@@ -319,12 +283,6 @@ class MessagesRepository {
               }
             }
           });
-        } else if (item.actionType == 'MARK_READ') {
-          _socketClient.sendReadReceipt(
-            payload['message_id'] as String,
-            payload['chat_id'] as String,
-            payload['sender_id'] as String,
-          );
         }
 
         // Remove from queue after processing
@@ -335,112 +293,7 @@ class MessagesRepository {
     }
   }
 
-  /// Reconciles messages missed while the device was offline
-  Future<void> requestSyncSinceLastMessage() async {
-    // Find the most recent message timestamp in local DB
-    final latestMsg = await (_db.select(_db.localMessages)
-          ..orderBy([(t) => OrderingTerm(expression: t.createdAt, mode: OrderingMode.desc)])
-          ..limit(1))
-        .getSingleOrNull();
-
-    final lastSeen = latestMsg?.createdAt ?? DateTime.now().subtract(const Duration(days: 7));
-
-    _socketClient.requestSync(lastSeen, (response) async {
-      if (response is Map<String, dynamic> && response['success'] == true) {
-        final messages = response['messages'] as List<dynamic>? ?? [];
-        
-        // Pre-decrypt all messages sequentially before inserting
-        final List<Map<String, dynamic>> decryptedMsgs = [];
-        for (final item in messages) {
-          final msg = item as Map<String, dynamic>;
-          final rawContent = msg['content'] as String;
-          final decryptedContent = await decryptMessageContent(
-              msg['chat_id'] as String, rawContent, msg['message_type'] as String);
-          decryptedMsgs.add({
-            ...msg,
-            'decrypted_content': decryptedContent,
-          });
-        }
-
-        // Ensure all required chats exist locally before batch insert
-        for (final msg in decryptedMsgs) {
-          final chatId = msg['chat_id'] as String;
-          final existingChat = await (_db.select(_db.localChats)
-                ..where((t) => t.id.equals(chatId)))
-              .getSingleOrNull();
-              
-          if (existingChat == null) {
-            await _syncSingleChat(chatId, msg);
-          }
-        }
-
-        await _db.batch((batch) {
-          for (final msg in decryptedMsgs) {
-            final sender = msg['sender'] as Map<String, dynamic>;
-            batch.insert(
-              _db.localMessages,
-              LocalMessagesCompanion.insert(
-                id: msg['id'] as String,
-                chatId: msg['chat_id'] as String,
-                senderId: sender['id'] as String,
-                content: msg['decrypted_content'] as String,
-                messageType: msg['message_type'] as String,
-                mediaId: Value(msg['media_id'] as String?),
-                replyToId: Value(msg['reply_to_id'] as String?),
-                createdAt: DateTime.parse(msg['created_at'] as String),
-                syncStatus: 'SYNCED',
-              ),
-              mode: InsertMode.insertOrReplace,
-            );
-          }
-        });
-      }
-    });
-  }
-
-  Future<void> _syncSingleChat(String chatId, Map<String, dynamic> messageData) async {
-    final sender = messageData['sender'] as Map<String, dynamic>;
-    await _db.into(_db.localChats).insert(
-      LocalChatsCompanion.insert(
-        id: chatId,
-        recipientId: sender['id'] as String,
-        recipientUsername: sender['username'] as String? ?? 'Unknown',
-        recipientDisplayName: sender['display_name'] as String? ?? 'Unknown',
-        lastMessageAt: DateTime.now(),
-      ),
-      mode: InsertMode.insertOrReplace,
-    );
-  }
-
-  /// Marks all messages in a chat from other users as read and sends read receipts
-  Future<void> markChatAsRead(String chatId) async {
-    final myUserId = await _secureStorage.getUserId() ?? '';
-
-    // Get unread messages from others that haven't been marked as READ yet
-    final unreadMessages = await (_db.select(_db.localMessages)
-          ..where((t) => t.chatId.equals(chatId) &
-              t.senderId.equals(myUserId).not() &
-              t.syncStatus.equals('READ').not()))
-        .get();
-
-    for (final msg in unreadMessages) {
-      if (_socketClient.isConnected) {
-        _socketClient.sendReadReceipt(msg.id, chatId, msg.senderId);
-      } else {
-        // Queue for offline
-        await _db.into(_db.syncQueue).insert(
-              SyncQueueCompanion.insert(
-                actionType: 'MARK_READ',
-                payload: json.encode({
-                  'message_id': msg.id,
-                  'chat_id': chatId,
-                  'sender_id': msg.senderId,
-                }),
-              ),
-            );
-      }
-    }
-  }
+  // TODO Step 4: remove backend message:read handler (read receipts dropped)
 
   /// Encrypts and sends a media attachment (photo, video, voice note, document)
   /// Not available on web platform.
@@ -534,15 +387,18 @@ class MessagesRepository {
       }
     }
 
+    final envelope = _cryptoPayloadToEnvelope(
+      messageId: messageId,
+      chatId: chatId,
+      senderDeviceId: myDeviceId,
+      type: MessageType.fromValue(type),
+      payloadJson: payloadToSend,
+    );
+    final envelopeJson = envelope.toJson();
+
     // 7. Send payload via WebSocket with ack
     if (_socketClient.isConnected) {
-      _socketClient.sendMessageWithAck({
-        'id': messageId,
-        'chat_id': chatId,
-        'content': payloadToSend,
-        'message_type': type,
-        'media_id': mediaId,
-      }, (ack) async {
+      _socketClient.sendMessageWithAck(envelopeJson, (ack) async {
         if (ack is Map<String, dynamic> && ack['success'] == true) {
           await (_db.update(_db.localMessages)
                 ..where((t) => t.id.equals(messageId)))
@@ -554,13 +410,7 @@ class MessagesRepository {
       await _db.into(_db.syncQueue).insert(
             SyncQueueCompanion.insert(
               actionType: 'SEND_MESSAGE',
-              payload: json.encode({
-                'id': messageId,
-                'chat_id': chatId,
-                'content': payloadToSend,
-                'message_type': type,
-                'media_id': mediaId,
-              }),
+              payload: json.encode(envelopeJson),
             ),
           );
     }
@@ -622,6 +472,52 @@ class MessagesRepository {
         return 'audio/aac';
       default:
         return 'application/octet-stream';
+    }
+  }
+
+  // Adapter functions to map EncryptedEnvelope to CryptoService expectations
+  String _envelopeToCryptoPayload(EncryptedEnvelope envelope) {
+    return json.encode({
+      'sender_device_id': envelope.senderDeviceId,
+      'ciphertext': envelope.ciphertext,
+      'iv': envelope.iv,
+      'keys': envelope.keys.map((k, v) => MapEntry(k, v.toJson())),
+    });
+  }
+
+  EncryptedEnvelope _cryptoPayloadToEnvelope({
+    required String messageId,
+    required String chatId,
+    required String senderDeviceId,
+    required MessageType type,
+    required String payloadJson,
+  }) {
+    try {
+      final data = json.decode(payloadJson) as Map<String, dynamic>;
+      return EncryptedEnvelope(
+        messageId: messageId,
+        chatId: chatId,
+        senderDeviceId: senderDeviceId,
+        type: type,
+        ciphertext: data['ciphertext'] as String,
+        iv: data['iv'] as String,
+        keys: (data['keys'] as Map<String, dynamic>).map(
+          (k, v) => MapEntry(k, WrappedKey.fromJson(v as Map<String, dynamic>)),
+        ),
+        sentAt: DateTime.now().toUtc().toIso8601String(),
+      );
+    } catch (_) {
+      // Fallback for plaintext payloads if E2EE failed during generation
+      return EncryptedEnvelope(
+        messageId: messageId,
+        chatId: chatId,
+        senderDeviceId: senderDeviceId,
+        type: type,
+        ciphertext: payloadJson,
+        iv: '',
+        keys: const {},
+        sentAt: DateTime.now().toUtc().toIso8601String(),
+      );
     }
   }
 }

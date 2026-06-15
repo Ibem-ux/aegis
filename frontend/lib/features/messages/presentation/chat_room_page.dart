@@ -70,9 +70,7 @@ class _ChatRoomPageState extends ConsumerState<ChatRoomPage> {
     super.initState();
     _loadMyUserId();
     ref.read(messagesRepositoryProvider).initSocketListeners();
-    ref.read(messagesRepositoryProvider).syncMessagesFromApi(widget.chatId);
     _setupSocketListeners();
-    ref.read(messagesRepositoryProvider).markChatAsRead(widget.chatId);
   }
 
   @override
@@ -92,12 +90,6 @@ class _ChatRoomPageState extends ConsumerState<ChatRoomPage> {
     ref.read(socketClientProvider).typingStream.listen((data) {
       if (data['chat_id'] == widget.chatId && mounted) {
         setState(() => _isRecipientTyping = (data['is_typing'] as bool?) ?? false);
-      }
-    });
-
-    ref.read(socketClientProvider).messageStream.listen((data) async {
-      if (data['chat_id'] == widget.chatId) {
-        await ref.read(messagesRepositoryProvider).markChatAsRead(widget.chatId);
       }
     });
   }
@@ -216,7 +208,6 @@ class _ChatRoomPageState extends ConsumerState<ChatRoomPage> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Encrypting and uploading...')));
     try {
       await ref.read(messagesRepositoryProvider).sendMediaMessage(widget.chatId, fileToSend, isVideo ? 'VIDEO' : 'IMAGE');
-      await ref.read(messagesRepositoryProvider).syncMessagesFromApi(widget.chatId);
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
     }
@@ -235,7 +226,6 @@ class _ChatRoomPageState extends ConsumerState<ChatRoomPage> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Encrypting and uploading audio...')));
       try {
         await ref.read(messagesRepositoryProvider).sendMediaMessage(widget.chatId, file, 'AUDIO');
-        await ref.read(messagesRepositoryProvider).syncMessagesFromApi(widget.chatId);
       } catch (e) {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
       }
@@ -252,7 +242,6 @@ class _ChatRoomPageState extends ConsumerState<ChatRoomPage> {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Encrypting and uploading voice note...')));
         try {
           await ref.read(messagesRepositoryProvider).sendMediaMessage(widget.chatId, file, 'RECORDING');
-          await ref.read(messagesRepositoryProvider).syncMessagesFromApi(widget.chatId);
         } catch (e) {
           if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
         }

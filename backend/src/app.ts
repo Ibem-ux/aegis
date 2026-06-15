@@ -22,7 +22,7 @@ import usersRoutes from './modules/users/users.routes';
 import invitesRoutes from './modules/invites/invites.routes';
 import devicesRoutes from './modules/devices/devices.routes';
 import chatsRoutes from './modules/chats/chats.routes';
-import messagesRoutes from './modules/messages/messages.routes';
+
 import mediaRoutes from './modules/media/media.routes';
 
 export function buildApp(): FastifyInstance {
@@ -63,7 +63,7 @@ export function buildApp(): FastifyInstance {
     apiInstance.register(invitesRoutes, { prefix: '/invites' });
     apiInstance.register(devicesRoutes, { prefix: '/devices' });
     apiInstance.register(chatsRoutes, { prefix: '/chats' });
-    apiInstance.register(messagesRoutes, { prefix: '/messages' });
+
     apiInstance.register(mediaRoutes, { prefix: '/media' });
   }, { prefix: '/api' });
 

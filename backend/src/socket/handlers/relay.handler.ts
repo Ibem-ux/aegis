@@ -3,6 +3,7 @@ import { AuthenticatedSocket } from '../middleware/auth.middleware';
 import { FastifyInstance } from 'fastify';
 import { EncryptedEnvelope, WrappedKey } from '../../shared/envelope';
 import { RelayService } from '../../modules/relay/relay.service';
+import { MessagesService } from '../../modules/messages/messages.service';
 import { config } from '../../config';
 import { logger } from '../../utils/logger';
 
@@ -118,6 +119,13 @@ export const registerRelayHandlers = async (
     const { messageId, recipientDeviceId } = payload as { messageId: string; recipientDeviceId: string };
 
     logger.info(`Received ACK for message ${messageId} from device ${recipientDeviceId}`);
+    
+    try {
+      await MessagesService.updateMessageStatus(fastify.db, messageId, recipientDeviceId, 'DELIVERED');
+    } catch (err) {
+      logger.error(`Failed to update message status to DELIVERED for message ${messageId}`, err);
+    }
+    
     await RelayService.remove(fastify.db, messageId, recipientDeviceId);
   });
 };

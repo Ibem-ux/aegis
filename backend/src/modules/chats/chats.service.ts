@@ -17,9 +17,6 @@ export class ChatsService {
         c.created_at,
         c.updated_at,
         c.last_message_at,
-        c.last_message_preview,
-        c.last_message_iv,
-        c.last_message_tag,
         u.id AS recipient_id,
         u.username AS recipient_username,
         u.display_name AS recipient_display_name,
@@ -36,37 +33,21 @@ export class ChatsService {
 
     const res = await db.query(query, [userId]);
     
-    // Decrypt last message preview if present
-    return res.rows.map((row) => {
-      let lastMessage: string | null = null;
-      if (row.last_message_preview && row.last_message_iv && row.last_message_tag) {
-        try {
-          lastMessage = EncryptionService.decrypt(
-            row.last_message_preview,
-            row.last_message_iv,
-            row.last_message_tag
-          );
-        } catch (error) {
-          lastMessage = '[Encrypted Message]';
-        }
+    return res.rows.map((row) => ({
+      chat_id: row.chat_id,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      last_message_at: row.last_message_at,
+      last_message_preview: null,
+      archived: row.archived === 1 || row.archived === true,
+      recipient: {
+        id: row.recipient_id,
+        username: row.recipient_username,
+        display_name: row.recipient_display_name,
+        avatar_url: row.recipient_avatar_url,
+        last_seen: row.recipient_last_seen,
       }
-
-      return {
-        chat_id: row.chat_id,
-        created_at: row.created_at,
-        updated_at: row.updated_at,
-        last_message_at: row.last_message_at,
-        last_message_preview: lastMessage,
-        archived: row.archived === 1 || row.archived === true,
-        recipient: {
-          id: row.recipient_id,
-          username: row.recipient_username,
-          display_name: row.recipient_display_name,
-          avatar_url: row.recipient_avatar_url,
-          last_seen: row.recipient_last_seen,
-        }
-      };
-    });
+    }));
   }
 
   /**

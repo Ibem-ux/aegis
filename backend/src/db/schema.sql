@@ -4,8 +4,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- Enum Types
 CREATE TYPE user_status AS ENUM ('ACTIVE', 'SUSPENDED', 'PENDING');
 CREATE TYPE device_platform AS ENUM ('ANDROID', 'IOS', 'DESKTOP', 'WEB');
-CREATE TYPE message_type AS ENUM ('TEXT', 'IMAGE', 'VIDEO', 'AUDIO', 'FILE', 'SYSTEM');
-CREATE TYPE message_delivery_status AS ENUM ('SENT', 'DELIVERED', 'READ');
+CREATE TYPE message_delivery_status AS ENUM ('SENT', 'DELIVERED');
 CREATE TYPE key_purpose AS ENUM ('DB_MESSAGE', 'MEDIA_DECRYPTION', 'BACKUP');
 CREATE TYPE backup_status AS ENUM ('STARTED', 'COMPLETED', 'FAILED');
 
@@ -85,10 +84,7 @@ CREATE TABLE chats (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    last_message_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    last_message_preview BYTEA, -- Server-side encrypted message preview
-    last_message_iv BYTEA,
-    last_message_tag BYTEA
+    last_message_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 6. Chat Participants Table
@@ -115,32 +111,16 @@ CREATE TABLE media (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 8. Messages Table
-CREATE TABLE messages (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    chat_id UUID NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
-    sender_id UUID NOT NULL REFERENCES users(id) ON DELETE SET NULL,
-    encrypted_content BYTEA NOT NULL,
-    content_iv BYTEA NOT NULL,
-    content_tag BYTEA NOT NULL,
-    message_type message_type DEFAULT 'TEXT',
-    reply_to_id UUID REFERENCES messages(id) ON DELETE SET NULL,
-    media_id UUID REFERENCES media(id) ON DELETE SET NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    edited_at TIMESTAMP WITH TIME ZONE,
-    deleted_at TIMESTAMP WITH TIME ZONE
-);
-
--- 9. Message Status Table
+-- 8. Message Status Table (Delivery Tracking)
 CREATE TABLE message_statuses (
-    message_id UUID NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    message_id TEXT NOT NULL,
+    recipient_device_id TEXT NOT NULL,
     status message_delivery_status DEFAULT 'SENT',
     status_changed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (message_id, user_id)
+    PRIMARY KEY (message_id, recipient_device_id)
 );
 
--- 10. Encryption Keys Table (For server-side key management/rotation metadata)
+-- 9. Encryption Keys Table (For server-side key management/rotation metadata)
 CREATE TABLE encryption_keys (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     key_purpose key_purpose DEFAULT 'DB_MESSAGE',
@@ -151,7 +131,7 @@ CREATE TABLE encryption_keys (
     rotated_at TIMESTAMP WITH TIME ZONE
 );
 
--- 11. Login Attempts Table
+-- 10. Login Attempts Table
 CREATE TABLE login_attempts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_identifier VARCHAR(100) NOT NULL,
@@ -162,7 +142,7 @@ CREATE TABLE login_attempts (
     attempted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 12. Backups Table
+-- 11. Backups Table
 CREATE TABLE backups (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     backup_type VARCHAR(50) DEFAULT 'FULL',
@@ -176,7 +156,7 @@ CREATE TABLE backups (
     created_by UUID REFERENCES users(id) ON DELETE SET NULL
 );
 
--- 13. User Chat Invite Links
+-- 12. User Chat Invite Links
 CREATE TABLE user_invite_links (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     creator_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -190,7 +170,7 @@ CREATE TABLE user_invite_links (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 14. Offline Envelope Queue
+-- 13. Offline Envelope Queue
 CREATE TABLE envelope_queue (
     message_id TEXT NOT NULL,
     recipient_device_id TEXT NOT NULL,
@@ -212,9 +192,6 @@ CREATE INDEX idx_sessions_user ON sessions(user_id);
 CREATE INDEX idx_sessions_refresh_token ON sessions(refresh_token_hash);
 CREATE INDEX idx_invites_code ON invites(code);
 CREATE INDEX idx_chat_participants_user ON chat_participants(user_id);
-CREATE INDEX idx_messages_chat ON messages(chat_id);
-CREATE INDEX idx_messages_sender ON messages(sender_id);
-CREATE INDEX idx_messages_created ON messages(created_at DESC);
-CREATE INDEX idx_message_statuses_user_status ON message_statuses(user_id, status);
+CREATE INDEX idx_message_statuses_recipient_status ON message_statuses(recipient_device_id, status);
 CREATE INDEX idx_login_attempts_ip_time ON login_attempts(ip_address, attempted_at DESC);
 CREATE INDEX idx_login_attempts_user_time ON login_attempts(user_identifier, attempted_at DESC);
