@@ -3,6 +3,7 @@ export type DevicePlatform = 'ANDROID' | 'IOS' | 'DESKTOP' | 'WEB';
 export type MessageDeliveryStatus = 'SENT' | 'DELIVERED';
 export type KeyPurpose = 'DB_MESSAGE' | 'MEDIA_DECRYPTION' | 'BACKUP';
 export type BackupStatus = 'STARTED' | 'COMPLETED' | 'FAILED';
+export type Role = 'user' | 'admin' | 'super_user' | 'owner';
 
 export interface User {
   id: string;
@@ -16,7 +17,7 @@ export interface User {
   totp_secret: string | null;
   totp_enabled: boolean;
   status: UserStatus;
-  role: 'user' | 'admin';
+  role: Role;
   recovery_key_hash: string | null;
   password_updated_at: Date;
   last_seen: Date;

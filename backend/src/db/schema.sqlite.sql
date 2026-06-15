@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
     totp_secret TEXT,
     totp_enabled INTEGER DEFAULT 0 CHECK(totp_enabled IN (0, 1)),
     status TEXT DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE', 'SUSPENDED', 'PENDING')),
-    role TEXT DEFAULT 'user' CHECK(role IN ('user', 'admin')),
+    role TEXT DEFAULT 'user' CHECK(role IN ('user', 'admin', 'super_user', 'owner')),
     full_name TEXT,
     email TEXT UNIQUE,
     phone TEXT,

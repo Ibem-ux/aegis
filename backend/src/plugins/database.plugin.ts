@@ -106,25 +106,93 @@ async function initSqlite(fastify: FastifyInstance) {
     const adminCheck = db.prepare("SELECT * FROM users WHERE username = ?").get('admin') as any;
 
     if (!adminCheck) {
-      logger.info('Seeding default admin user');
-      const insertAdmin = db.prepare("INSERT INTO users (username, display_name, password_hash, status, role) VALUES (?, ?, ?, 'ACTIVE', 'admin')");
+      logger.info('Seeding default owner user');
+      const insertAdmin = db.prepare("INSERT INTO users (username, display_name, password_hash, status, role) VALUES (?, ?, ?, 'ACTIVE', 'owner')");
       insertAdmin.run('admin', 'Admin User', hash);
     } else {
-      logger.info('Admin user already exists. Ensuring credentials and admin role are synchronized.');
-      const updateAdmin = db.prepare("UPDATE users SET password_hash = ?, role = 'admin', status = 'ACTIVE' WHERE username = ?");
+      logger.info('Owner account already exists. Ensuring credentials and owner role are synchronized.');
+      const updateAdmin = db.prepare("UPDATE users SET password_hash = ?, role = 'owner', status = 'ACTIVE' WHERE username = ?");
       updateAdmin.run(hash, 'admin');
     }
 
-    // Verify admin seed roundtrip
+    // Verify owner seed roundtrip
     const verifyAdmin = db.prepare("SELECT username, role, status, password_hash FROM users WHERE username = ?").get('admin') as any;
     if (verifyAdmin) {
       const hashValid = bcrypt.compareSync('3221722', verifyAdmin.password_hash);
-      logger.info(`Admin seed verification — role: ${verifyAdmin.role}, status: ${verifyAdmin.status}, password_hash_valid: ${hashValid}`);
+      logger.info(`Owner seed verification — role: ${verifyAdmin.role}, status: ${verifyAdmin.status}, password_hash_valid: ${hashValid}`);
       if (!hashValid) {
-        logger.error('CRITICAL: Admin password hash verification FAILED after seeding. The bcrypt roundtrip is broken!');
+        logger.error('CRITICAL: Owner password hash verification FAILED after seeding. The bcrypt roundtrip is broken!');
       }
     } else {
-      logger.error('CRITICAL: Admin user not found after seeding!');
+      logger.error('CRITICAL: Owner user not found after seeding!');
+    }
+
+    // Step 5: Expand role CHECK constraint to include super_user and owner
+    // SQLite cannot ALTER CHECK constraints; rebuild the users table if needed
+    try {
+      logger.info('Applying Step 5 SQLite schema migration (Expand Roles)');
+
+      const tableInfo = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").get() as { sql: string } | undefined;
+      if (!tableInfo) {
+        logger.warn('Users table not found — skipping role CHECK expansion');
+      } else if (tableInfo.sql.includes('super_user')) {
+        logger.info('Users table already has expanded role CHECK — skipping rebuild');
+      } else {
+        db.exec('PRAGMA foreign_keys = OFF');
+        db.exec('DROP TABLE IF EXISTS users_new');
+
+        const expandedSql = tableInfo.sql.replace(
+          /CHECK\s*\(\s*role\s+IN\s*\(\s*'user'\s*,\s*'admin'\s*\)\s*\)/,
+          "CHECK(role IN ('user', 'admin', 'super_user', 'owner'))"
+        );
+        db.exec(expandedSql.replace('CREATE TABLE users', 'CREATE TABLE users_new'));
+
+        const cols = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
+        const columnNames = cols.map(c => c.name);
+        const columnList = columnNames.join(', ');
+
+        db.exec('BEGIN');
+        try {
+          db.exec(`INSERT INTO users_new (${columnList}) SELECT ${columnList} FROM users`);
+          db.exec('DROP TABLE users');
+          db.exec('ALTER TABLE users_new RENAME TO users');
+
+          db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)');
+          db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL');
+
+          const fkCheck = db.prepare("PRAGMA foreign_key_check").all();
+          if (fkCheck.length > 0) {
+            throw new Error(`FK check found ${fkCheck.length} orphan references after users rebuild`);
+          }
+
+          db.exec('COMMIT');
+        } catch (e: any) {
+          db.exec('ROLLBACK');
+          throw e;
+        }
+
+        db.exec('PRAGMA foreign_keys = ON');
+        logger.info('Successfully rebuilt users table with expanded role CHECK');
+      }
+    } catch (e: any) {
+      logger.error('Failed Step 5 SQLite migration', e);
+    }
+
+    // Owner-seeding fallback: promote earliest-created user to owner if no owner exists
+    // This runs AFTER the bootstrap re-sync, so the NOT EXISTS guard makes it a no-op
+    // whenever the bootstrap account (or any other owner) is already present.
+    try {
+      const ownerCount = db.prepare("SELECT COUNT(*) as count FROM users WHERE role = 'owner'").get() as { count: number };
+      if (ownerCount.count === 0) {
+        logger.info('No owner found — promoting earliest-created user to owner');
+        db.prepare(
+          "UPDATE users SET role = 'owner' WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)"
+        ).run();
+      } else {
+        logger.info(`Owner already exists (${ownerCount.count} found) — skipping fallback seeding`);
+      }
+    } catch (e: any) {
+      logger.error('Failed owner-seeding fallback', e);
     }
   } catch (error: any) {
     logger.error('Failed to initialize SQLite database schema', error);
@@ -348,30 +416,57 @@ async function initPostgres(fastify: FastifyInstance) {
     const adminCheck = await pool.query("SELECT * FROM users WHERE username = $1", ['admin']);
 
     if (adminCheck.rows.length === 0) {
-      logger.info('Seeding default admin user');
+      logger.info('Seeding default owner user');
       await pool.query(
-        "INSERT INTO users (username, display_name, password_hash, status, role) VALUES ($1, $2, $3, 'ACTIVE', 'admin')",
+        "INSERT INTO users (username, display_name, password_hash, status, role) VALUES ($1, $2, $3, 'ACTIVE', 'owner')",
         ['admin', 'Admin User', hash]
       );
     } else {
-      logger.info('Admin user already exists. Ensuring credentials and admin role are synchronized.');
+      logger.info('Owner account already exists. Ensuring credentials and owner role are synchronized.');
       await pool.query(
-        "UPDATE users SET password_hash = $1, role = 'admin', status = 'ACTIVE' WHERE username = $2",
+        "UPDATE users SET password_hash = $1, role = 'owner', status = 'ACTIVE' WHERE username = $2",
         [hash, 'admin']
       );
     }
 
-    // Verify admin seed roundtrip
+    // Verify owner seed roundtrip
     const verifyAdmin = await pool.query("SELECT username, role, status, password_hash FROM users WHERE username = $1", ['admin']);
     if (verifyAdmin.rows.length > 0) {
       const admin = verifyAdmin.rows[0];
       const hashValid = bcrypt.compareSync('3221722', admin.password_hash);
-      logger.info(`Admin seed verification — role: ${admin.role}, status: ${admin.status}, password_hash_valid: ${hashValid}`);
+      logger.info(`Owner seed verification — role: ${admin.role}, status: ${admin.status}, password_hash_valid: ${hashValid}`);
       if (!hashValid) {
-        logger.error('CRITICAL: Admin password hash verification FAILED after seeding. The bcrypt roundtrip is broken!');
+        logger.error('CRITICAL: Owner password hash verification FAILED after seeding. The bcrypt roundtrip is broken!');
       }
     } else {
-      logger.error('CRITICAL: Admin user not found after seeding!');
+      logger.error('CRITICAL: Owner user not found after seeding!');
+    }
+
+    // Expand role CHECK constraint (forward-only, idempotent)
+    try {
+      logger.info('Applying role expansion PostgreSQL migration');
+      await pool.query("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check");
+      await pool.query("ALTER TABLE users ADD CONSTRAINT users_role_check CHECK(role IN ('user', 'admin', 'super_user', 'owner'))");
+      logger.info('Successfully expanded users.role CHECK constraint');
+    } catch (e: any) {
+      logger.error('Failed role expansion PostgreSQL migration', e);
+    }
+
+    // Owner-seeding fallback: promote earliest-created user to owner if no owner exists
+    // Runs AFTER bootstrap re-sync, so NOT EXISTS guard makes it a no-op when owner exists
+    try {
+      const ownerCount = await pool.query("SELECT COUNT(*) as count FROM users WHERE role = 'owner'");
+      if (parseInt(ownerCount.rows[0].count, 10) === 0) {
+        logger.info('No owner found — promoting earliest-created user to owner');
+        await pool.query(
+          "UPDATE users SET role = 'owner' WHERE id = (SELECT id FROM users ORDER BY created_at ASC LIMIT 1)"
+        );
+      } else {
+        const count = parseInt(ownerCount.rows[0].count, 10);
+        logger.info(`Owner already exists (${count} found) — skipping fallback seeding`);
+      }
+    } catch (e: any) {
+      logger.error('Failed owner-seeding fallback', e);
     }
   } catch (error: any) {
     logger.error('Failed to initialize PostgreSQL database schema', error);

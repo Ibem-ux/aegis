@@ -18,7 +18,7 @@ CREATE TABLE users (
     totp_secret VARCHAR(128),
     totp_enabled BOOLEAN DEFAULT FALSE,
     status user_status DEFAULT 'ACTIVE',
-    role VARCHAR(20) DEFAULT 'user' CHECK(role IN ('user', 'admin')),
+    role VARCHAR(20) DEFAULT 'user' CHECK(role IN ('user', 'admin', 'super_user', 'owner')),
     full_name VARCHAR(100),
     email VARCHAR(100) UNIQUE,
     phone VARCHAR(30),

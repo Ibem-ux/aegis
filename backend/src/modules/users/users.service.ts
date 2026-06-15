@@ -1,7 +1,17 @@
 import { Pool } from 'pg';
-import { User } from '../../types';
+import { User, Role } from '../../types';
 import { NotFoundError, BadRequestError, ForbiddenError } from '../../utils/errors';
 import { SecurityUtils } from '../../utils/security';
+import { hasCapability } from '../../utils/capabilities';
+
+const ROLE_RANK: Record<Role, number> = {
+  user: 1,
+  admin: 2,
+  super_user: 3,
+  owner: 4,
+};
+
+const getRoleRank = (role: string): number => ROLE_RANK[role as Role] ?? 0;
 
 export class UsersService {
   /**
@@ -34,7 +44,7 @@ export class UsersService {
     }
 
     const isSelf = userId === requesterId;
-    const isAdmin = requester.role === 'admin';
+    const canViewExtended = hasCapability(requester.role, 'VIEW_EXTENDED_PROFILE');
 
     // Safe base user structure (publicly visible details)
     const profile: Partial<User> = {
@@ -48,8 +58,8 @@ export class UsersService {
       created_at: target.created_at,
     };
 
-    // If viewing self or requester is Admin, expose extended profile fields
-    if (isSelf || isAdmin) {
+    // If viewing self or requester has VIEW_EXTENDED_PROFILE, expose extended profile fields
+    if (isSelf || canViewExtended) {
       profile.full_name = target.full_name;
       profile.email = target.email;
       profile.phone = target.phone;
@@ -74,7 +84,7 @@ export class UsersService {
       avatar_url?: string;
       email?: string;
       phone?: string;
-      role?: 'user' | 'admin';
+      role?: Role;
       status?: 'ACTIVE' | 'SUSPENDED' | 'PENDING';
     }
   ): Promise<Partial<User>> {
@@ -87,10 +97,18 @@ export class UsersService {
     if (!requester) throw new NotFoundError('Requester not found');
 
     const isSelf = userId === requesterId;
-    const isAdmin = requester.role === 'admin';
+    const canEditAny = hasCapability(requester.role, 'EDIT_ANY_PROFILE');
 
-    if (!isSelf && !isAdmin) {
+    if (!isSelf && !canEditAny) {
       throw new ForbiddenError('You can only update your own profile');
+    }
+
+    if (!isSelf && canEditAny) {
+      const targetRank = getRoleRank(target.role);
+      const actorRank = getRoleRank(requester.role);
+      if (targetRank > actorRank) {
+        throw new ForbiddenError('You cannot edit a user with higher rank');
+      }
     }
 
     const updates: string[] = [];
@@ -102,17 +120,45 @@ export class UsersService {
       values.push(val);
     };
 
-    // Users (or Admin) can update display name, full name, email, phone, and avatar
+    // Users (or those with EDIT_ANY_PROFILE) can update display name, full name, email, phone, and avatar
     if (payload.display_name !== undefined) addUpdate('display_name', payload.display_name);
     if (payload.full_name !== undefined) addUpdate('full_name', payload.full_name);
     if (payload.avatar_url !== undefined) addUpdate('avatar_url', payload.avatar_url);
     if (payload.email !== undefined) addUpdate('email', payload.email);
     if (payload.phone !== undefined) addUpdate('phone', payload.phone);
 
-    // Only Admin can update role and status
-    if (isAdmin) {
-      if (payload.status !== undefined) addUpdate('status', payload.status);
-      if (payload.role !== undefined) addUpdate('role', payload.role);
+    // Only users with MANAGE_ROLES can update role, with rank-based escalation guard
+    if (payload.role !== undefined && hasCapability(requester.role, 'MANAGE_ROLES')) {
+      const targetRank = getRoleRank(target.role);
+      const newRoleRank = getRoleRank(payload.role);
+      const actorRank = getRoleRank(requester.role);
+
+      if (isSelf) {
+        throw new ForbiddenError('You cannot change your own role');
+      }
+      if (payload.role === 'owner') {
+        throw new ForbiddenError('Assigning the owner role via API is not allowed');
+      }
+      if (payload.role === 'super_user' && !hasCapability(requester.role, 'GRANT_SUPER_USER')) {
+        throw new ForbiddenError('Only the owner can assign the super_user role');
+      }
+      if (targetRank >= actorRank || newRoleRank >= actorRank) {
+        throw new ForbiddenError('You cannot assign a role equal to or higher than your own');
+      }
+
+      addUpdate('role', payload.role);
+    }
+
+    // Only users with MANAGE_USER_STATUS can update status, with rank-based guard
+    if (payload.status !== undefined && hasCapability(requester.role, 'MANAGE_USER_STATUS')) {
+      const targetRank = getRoleRank(target.role);
+      const actorRank = getRoleRank(requester.role);
+
+      if (targetRank >= actorRank) {
+        throw new ForbiddenError('You cannot modify the status of a user with equal or higher rank');
+      }
+
+      addUpdate('status', payload.status);
     }
 
     if (updates.length === 0) {

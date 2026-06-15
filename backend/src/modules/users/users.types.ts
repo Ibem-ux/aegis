@@ -1,10 +1,12 @@
+import { Role } from '../../types';
+
 export interface UpdateProfileBody {
   display_name?: string;
   full_name?: string;
   avatar_url?: string;
   email?: string;
   phone?: string;
-  role?: 'user' | 'admin';
+  role?: Role;
   status?: 'ACTIVE' | 'SUSPENDED' | 'PENDING';
 }
 
