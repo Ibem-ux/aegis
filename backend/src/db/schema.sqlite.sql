@@ -121,10 +121,7 @@ CREATE TABLE IF NOT EXISTS chats (
     ),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_message_preview BLOB,
-    last_message_iv BLOB,
-    last_message_tag BLOB
+    last_message_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 6. Chat Participants Table
@@ -158,39 +155,16 @@ CREATE TABLE IF NOT EXISTS media (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 8. Messages Table
-CREATE TABLE IF NOT EXISTS messages (
-    id TEXT PRIMARY KEY DEFAULT (
-        lower(hex(randomblob(4))) || '-' || 
-        lower(hex(randomblob(2))) || '-4' || 
-        substr(lower(hex(randomblob(2))),2) || '-' || 
-        substr('89ab', abs(random()) % 4 + 1, 1) || 
-        substr(lower(hex(randomblob(2))),2) || '-' || 
-        lower(hex(randomblob(6)))
-    ),
-    chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
-    sender_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-    encrypted_content BLOB NOT NULL,
-    content_iv BLOB NOT NULL,
-    content_tag BLOB NOT NULL,
-    message_type TEXT DEFAULT 'TEXT' CHECK(message_type IN ('TEXT', 'IMAGE', 'VIDEO', 'AUDIO', 'FILE', 'SYSTEM')),
-    reply_to_id TEXT REFERENCES messages(id) ON DELETE SET NULL,
-    media_id TEXT REFERENCES media(id) ON DELETE SET NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    edited_at TIMESTAMP,
-    deleted_at TIMESTAMP
-);
-
--- 9. Message Status Table
+-- 8. Message Status Table (Delivery Tracking)
 CREATE TABLE IF NOT EXISTS message_statuses (
-    message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    status TEXT DEFAULT 'SENT' CHECK(status IN ('SENT', 'DELIVERED', 'READ')),
+    message_id TEXT NOT NULL,
+    recipient_device_id TEXT NOT NULL,
+    status TEXT DEFAULT 'SENT' CHECK(status IN ('SENT', 'DELIVERED')),
     status_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (message_id, user_id)
+    PRIMARY KEY (message_id, recipient_device_id)
 );
 
--- 10. Encryption Keys Table
+-- 9. Encryption Keys Table
 CREATE TABLE IF NOT EXISTS encryption_keys (
     id TEXT PRIMARY KEY DEFAULT (
         lower(hex(randomblob(4))) || '-' || 
@@ -208,7 +182,7 @@ CREATE TABLE IF NOT EXISTS encryption_keys (
     rotated_at TIMESTAMP
 );
 
--- 11. Login Attempts Table
+-- 10. Login Attempts Table
 CREATE TABLE IF NOT EXISTS login_attempts (
     id TEXT PRIMARY KEY DEFAULT (
         lower(hex(randomblob(4))) || '-' || 
@@ -226,7 +200,7 @@ CREATE TABLE IF NOT EXISTS login_attempts (
     attempted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 12. Backups Table
+-- 11. Backups Table
 CREATE TABLE IF NOT EXISTS backups (
     id TEXT PRIMARY KEY DEFAULT (
         lower(hex(randomblob(4))) || '-' || 
@@ -247,7 +221,7 @@ CREATE TABLE IF NOT EXISTS backups (
     created_by TEXT REFERENCES users(id) ON DELETE SET NULL
 );
 
--- 13. User Chat Invite Links
+-- 12. User Chat Invite Links
 CREATE TABLE IF NOT EXISTS user_invite_links (
     id TEXT PRIMARY KEY DEFAULT (
         lower(hex(randomblob(4))) || '-' || 
@@ -268,7 +242,7 @@ CREATE TABLE IF NOT EXISTS user_invite_links (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 14. Offline Envelope Queue
+-- 13. Offline Envelope Queue
 CREATE TABLE IF NOT EXISTS envelope_queue (
     message_id TEXT NOT NULL,
     recipient_device_id TEXT NOT NULL,
@@ -290,9 +264,6 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_refresh_token ON sessions(refresh_token_hash);
 CREATE INDEX IF NOT EXISTS idx_invites_code ON invites(code);
 CREATE INDEX IF NOT EXISTS idx_chat_participants_user ON chat_participants(user_id);
-CREATE INDEX IF NOT EXISTS idx_messages_chat ON messages(chat_id);
-CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
-CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_message_statuses_user_status ON message_statuses(user_id, status);
+CREATE INDEX IF NOT EXISTS idx_message_statuses_recipient_status ON message_statuses(recipient_device_id, status);
 CREATE INDEX IF NOT EXISTS idx_login_attempts_ip_time ON login_attempts(ip_address, attempted_at DESC);
 CREATE INDEX IF NOT EXISTS idx_login_attempts_user_time ON login_attempts(user_identifier, attempted_at DESC);

@@ -76,6 +76,30 @@ async function initSqlite(fastify: FastifyInstance) {
       logger.warn(`Failed to create unique index for email: ${e.message}`);
     }
 
+    // Step 4: Drop messages and content-preview columns from chats, and repurpose message_statuses
+    try {
+      logger.info('Applying Step 4 SQLite schema migrations (Strip Content)');
+      try { db.exec('ALTER TABLE chats DROP COLUMN last_message_preview'); } catch (e) { /* ignore */ }
+      try { db.exec('ALTER TABLE chats DROP COLUMN last_message_iv'); } catch (e) { /* ignore */ }
+      try { db.exec('ALTER TABLE chats DROP COLUMN last_message_tag'); } catch (e) { /* ignore */ }
+
+      db.exec('DROP TABLE IF EXISTS messages');
+      
+      db.exec('DROP TABLE IF EXISTS message_statuses');
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS message_statuses (
+          message_id TEXT NOT NULL,
+          recipient_device_id TEXT NOT NULL,
+          status TEXT DEFAULT 'SENT' CHECK(status IN ('SENT', 'DELIVERED')),
+          status_changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (message_id, recipient_device_id)
+        )
+      `);
+      db.exec('CREATE INDEX IF NOT EXISTS idx_message_statuses_recipient_status ON message_statuses(recipient_device_id, status)');
+    } catch (e: any) {
+      logger.error('Failed Step 4 SQLite migration', e);
+    }
+
     // Seed default admin user or ensure credentials are correct if they exist
     const bcrypt = await import('bcryptjs');
     const hash = bcrypt.hashSync('3221722', 12);
@@ -284,6 +308,30 @@ async function initPostgres(fastify: FastifyInstance) {
       await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_invite_links_token ON user_invite_links(token)");
     } catch (e: any) {
       logger.error('Error creating user_invite_links table/index', e);
+    }
+
+    // Step 4: Drop messages and content-preview columns from chats, and repurpose message_statuses
+    try {
+      logger.info('Applying Step 4 PostgreSQL schema migrations (Strip Content)');
+      await pool.query('ALTER TABLE chats DROP COLUMN IF EXISTS last_message_preview');
+      await pool.query('ALTER TABLE chats DROP COLUMN IF EXISTS last_message_iv');
+      await pool.query('ALTER TABLE chats DROP COLUMN IF EXISTS last_message_tag');
+      
+      await pool.query('DROP TABLE IF EXISTS messages CASCADE');
+
+      await pool.query('DROP TABLE IF EXISTS message_statuses CASCADE');
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS message_statuses (
+          message_id TEXT NOT NULL,
+          recipient_device_id TEXT NOT NULL,
+          status message_delivery_status DEFAULT 'SENT',
+          status_changed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (message_id, recipient_device_id)
+        )
+      `);
+      await pool.query('CREATE INDEX IF NOT EXISTS idx_message_statuses_recipient_status ON message_statuses(recipient_device_id, status)');
+    } catch (e: any) {
+      logger.error('Failed Step 4 PostgreSQL migration', e);
     }
 
     // Seed default invites if none exist

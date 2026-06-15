@@ -1,8 +1,8 @@
-import { MessageType } from '../../types';
+import { MessageType } from '../../shared/envelope';
 
 export interface SendMessageBody {
   chat_id: string;
-  content: string; // Plaintext sent from client (will be server-encrypted in Phase 1 setup)
+  content: string;
   message_type?: MessageType;
   reply_to_id?: string;
   media_id?: string;
@@ -10,5 +10,5 @@ export interface SendMessageBody {
 
 export interface GetMessagesQuery {
   limit?: number;
-  before?: string; // Timestamp ISO String
+  before?: string;
 }
