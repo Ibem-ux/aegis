@@ -84,3 +84,23 @@ class EncryptedEnvelope {
         'sentAt': sentAt,
       };
 }
+
+/// Shared media-metadata contract (README §6.1).
+class MediaMetadata {
+  final String mediaId;    // server ref for GET /api/media/{mediaId}
+  final String keyBase64;  // AES-256-GCM file key, base64 (SAME variant CryptoService.decryptFile decodes)
+  final String ivBase64;   // AES-256-GCM file iv,  base64 (SAME variant CryptoService.decryptFile decodes)
+  final String filename;
+  final String? mime;
+  const MediaMetadata({
+    required this.mediaId, required this.keyBase64, required this.ivBase64,
+    required this.filename, this.mime,
+  });
+  factory MediaMetadata.fromJson(Map<String, dynamic> j) => MediaMetadata(
+    mediaId: j['media_id'] as String,
+    keyBase64: j['file_key'] as String,
+    ivBase64: j['file_iv'] as String,
+    filename: j['filename'] as String,
+    mime: j['mime'] as String?,
+  );
+}
