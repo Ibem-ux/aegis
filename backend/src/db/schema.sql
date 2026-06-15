@@ -190,6 +190,19 @@ CREATE TABLE user_invite_links (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 14. Offline Envelope Queue
+CREATE TABLE envelope_queue (
+    message_id TEXT NOT NULL,
+    recipient_device_id TEXT NOT NULL,
+    envelope TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (message_id, recipient_device_id)
+);
+
+CREATE INDEX idx_envelope_queue_recipient ON envelope_queue(recipient_device_id);
+CREATE INDEX idx_envelope_queue_expires ON envelope_queue(expires_at);
+
 -- Indexes for performance hardening
 CREATE UNIQUE INDEX idx_invite_links_token ON user_invite_links(token);
 CREATE INDEX idx_users_username ON users(username);

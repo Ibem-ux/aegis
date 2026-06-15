@@ -30,6 +30,9 @@ export const config = {
     masterEncryptionKey: process.env.MASTER_ENCRYPTION_KEY || '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
     backupEncryptionKey: process.env.BACKUP_ENCRYPTION_KEY || '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
   },
+  relay: {
+    offlineQueueTTL: parseInt(process.env.RELAY_OFFLINE_QUEUE_TTL || '604800', 10),
+  },
   email: {
     smtpHost: process.env.SMTP_HOST || 'smtp.gmail.com',
     smtpPort: parseInt(process.env.SMTP_PORT || '587', 10),

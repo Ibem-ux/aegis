@@ -268,6 +268,19 @@ CREATE TABLE IF NOT EXISTS user_invite_links (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 14. Offline Envelope Queue
+CREATE TABLE IF NOT EXISTS envelope_queue (
+    message_id TEXT NOT NULL,
+    recipient_device_id TEXT NOT NULL,
+    envelope TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP NOT NULL,
+    PRIMARY KEY (message_id, recipient_device_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_envelope_queue_recipient ON envelope_queue(recipient_device_id);
+CREATE INDEX IF NOT EXISTS idx_envelope_queue_expires ON envelope_queue(expires_at);
+
 -- Indexes for performance
 CREATE UNIQUE INDEX IF NOT EXISTS idx_invite_links_token ON user_invite_links(token);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);

@@ -4,6 +4,7 @@ import { socketAuthMiddleware, AuthenticatedSocket } from './middleware/auth.mid
 import { registerChatHandlers } from './handlers/chat.handler';
 import { registerPresenceHandlers } from './handlers/presence.handler';
 import { registerSyncHandlers } from './handlers/sync.handler';
+import { registerRelayHandlers, flushQueueForDevice } from './handlers/relay.handler';
 import { logger } from '../utils/logger';
 
 export function setupSocketServer(fastify: FastifyInstance) {
@@ -31,5 +32,7 @@ export function setupSocketServer(fastify: FastifyInstance) {
     registerChatHandlers(io, socket, fastify);
     await registerPresenceHandlers(io, socket, fastify);
     registerSyncHandlers(io, socket, fastify);
+    await registerRelayHandlers(io, socket, fastify);
+    await flushQueueForDevice(io, fastify, deviceId, socket.id);
   });
 }
